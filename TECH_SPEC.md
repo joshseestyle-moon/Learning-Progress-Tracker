@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.5　　最後更新：2026-05-23  
+> 版本：1.6　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -484,6 +484,7 @@ document.documentElement.setAttribute('data-theme',
 | `reset.css` | 跨瀏覽器樣式歸零 |
 | `theme.css` | CSS Custom Properties（亮/暗） |
 | `app.css` | 元件樣式（`.card`、`.btn`、`.form-input`、`.badge`、sidebar、modal 等） |
+| `print.css` | A4 列印版面（`.print-page`、`.print-timetable`、`.print-plan-table`、`.print-progress-table`；`@media print` 隱藏 UI chrome） |
 
 ---
 
@@ -819,6 +820,48 @@ if (!xCols.includes('new_column')) {
 
 ---
 
+### 列印週計畫（print.js）
+
+`print.js` 的 `render(el)` 以 `Promise.all` 並行取得四支 API：
+
+```js
+const [timetable, exams, scheduled, chapters] = await Promise.all([
+  get('/timetable'),
+  get('/exams?upcoming=8'),
+  get('/chapters/scheduled'),
+  get('/chapters'),
+]);
+```
+
+並行取得後以純函式建構四個 HTML 區塊：
+
+| 函式 | 資料來源 | 說明 |
+|---|---|---|
+| `buildTimetable(slots)` | `/timetable` | 僅顯示有課的星期與節次，過濾空白欄/列 |
+| `buildExams(exams, progMap)` | `/exams?upcoming=8` + progressMap | 未完成考試，含進度條 |
+| `buildWeekPlan(items, today)` | `/chapters/scheduled` 篩本週 | 本週排定的預習/複習項目 |
+| `buildProgress(chapters)` | `/chapters` | 以科目分組的章節進度表格 |
+
+`getWeekRange()` 計算當週週一（Mon=0）到週日：
+
+```js
+function getWeekRange() {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7;  // 將 JS 的 Sun=0 轉為 Mon=0
+  const mon = new Date(now); mon.setDate(now.getDate() - dow);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return { start: fmt(mon), end: fmt(sun) };
+}
+```
+
+**列印樣式設計**：
+- `max-width: 794px`（A4 @ 96dpi）讓螢幕預覽接近 A4
+- `.print-top` 使用 `grid-template-columns: 1fr 1fr` 左右並排課表和考試
+- `@media print { @page { size: A4 portrait; margin: 12mm 15mm; } }`
+- `@media print` 中 `.sidebar`、`.topbar`、`.print-controls` 設 `display: none !important`
+
+---
+
 ### 跨頁面共用的 progressMap 模式
 
 `exams.js` 與 `dashboard.js` 的考試倒數區塊都需要顯示科目讀書進度，兩者採用相同的計算邏輯：
@@ -842,4 +885,4 @@ for (const c of chapters) {
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v1.5）。*
+*本文件反映截至 2026-05-23 的實作狀態（v1.6）。*

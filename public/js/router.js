@@ -6,6 +6,7 @@ import { render as renderChapters }  from './chapters.js';
 import { render as renderStudylog }  from './studylog.js';
 import { render as renderGrades }    from './grades.js';
 import { render as renderSubjects }  from './subjects.js';
+import { render as renderPrint }     from './print.js';
 
 const routes = {
   dashboard: { title: '今日概覽',   fn: renderDashboard },
@@ -16,6 +17,7 @@ const routes = {
   studylog:  { title: '讀書時間',   fn: renderStudylog  },
   grades:    { title: '成績紀錄',   fn: renderGrades    },
   subjects:  { title: '課程資訊',   fn: renderSubjects  },
+  print:     { title: '列印週計畫', fn: renderPrint     },
 };
 
 export function navigate(hash) {

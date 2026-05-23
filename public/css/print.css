@@ -1,0 +1,178 @@
+/* ── 列印預覽（螢幕） ──────────────────────────── */
+.print-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  margin-bottom: 1.25rem;
+}
+
+.print-page {
+  max-width: 794px; /* A4 @ 96 dpi */
+  margin: 0 auto;
+  background: #fff;
+  color: #111;
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.print-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 2px solid #222;
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+.print-header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+.print-header .meta { font-size: 11px; color: #555; text-align: right; line-height: 1.6; }
+
+.print-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  border-left: 3px solid #4f6ef7;
+  padding-left: 6px;
+  margin: 12px 0 6px;
+}
+
+/* ── 上半：課表 + 考試 並排 ── */
+.print-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+/* ── 課表格 ── */
+.print-timetable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.print-timetable th, .print-timetable td {
+  border: 1px solid #ddd;
+  padding: 3px 4px;
+  text-align: center;
+}
+.print-timetable th { background: #f0f0f0; font-weight: 600; }
+.print-timetable td.subject-cell {
+  font-size: 10px;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 2px;
+}
+.print-timetable td.empty-cell { background: #fafafa; }
+
+/* ── 考試列表 ── */
+.print-exam-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 11px;
+}
+.print-exam-row:last-child { border-bottom: none; }
+.print-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.print-chip {
+  font-size: 10px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.print-days-left {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.urgent { color: #e04040; }
+.soon   { color: #d97706; }
+.ok     { color: #16a34a; }
+
+/* 進度條（考試區塊） */
+.print-prog { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.print-prog-label { font-size: 9px; min-width: 24px; }
+.print-prog-bar { flex: 1; height: 4px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+.print-prog-fill { height: 100%; border-radius: 999px; }
+.print-prog-text { font-size: 9px; color: #888; min-width: 26px; text-align: right; }
+
+/* ── 本週計畫 ── */
+.print-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.print-plan-table th {
+  background: #f0f0f0;
+  font-weight: 600;
+  padding: 3px 6px;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+.print-plan-table td {
+  padding: 3px 6px;
+  border: 1px solid #eee;
+  vertical-align: top;
+}
+.print-plan-table tr.done td { color: #aaa; text-decoration: line-through; }
+
+/* ── 讀書進度 ── */
+.print-progress-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  margin-bottom: 8px;
+}
+.print-progress-table th {
+  background: #f0f0f0;
+  font-weight: 600;
+  padding: 3px 5px;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+.print-progress-table th.left { text-align: left; }
+.print-progress-table td {
+  padding: 2px 5px;
+  border: 1px solid #eee;
+  text-align: center;
+  vertical-align: middle;
+}
+.print-progress-table td.chapter-name { text-align: left; }
+.print-subject-header td {
+  background: #f5f5f5;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 4px 5px;
+}
+.done-mark { color: #16a34a; font-weight: 700; }
+.todo-mark { color: #ccc; }
+
+/* ── 頁尾 ── */
+.print-footer {
+  margin-top: 14px;
+  border-top: 1px solid #ddd;
+  padding-top: 5px;
+  font-size: 10px;
+  color: #888;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ── 列印時 ── */
+@media print {
+  .sidebar, .topbar, .print-controls { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  body { background: #fff !important; }
+  .print-page { max-width: 100%; }
+  @page { size: A4 portrait; margin: 12mm 15mm; }
+}
