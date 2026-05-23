@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.7　　最後更新：2026-05-23  
+> 版本：1.8　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -863,6 +863,38 @@ function getWeekRange() {
 
 ---
 
+### 成績表單考試選擇器（grades.js）
+
+新增/編輯成績時，表單頂部有一個考試選擇下拉（`#gm-exam-pick`），從模組層級的 `exams[]` 陣列（與 `subjects[]` 並行取得）產生選項：
+
+```js
+[subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
+```
+
+選擇考試後自動填入其他欄位：
+
+```js
+picker.onchange = () => {
+  const opt = picker.options[picker.selectedIndex];
+  if (!opt.value) return;
+  modal.querySelector('#gm-name').value    = opt.dataset.name;    // 考試名稱
+  modal.querySelector('#gm-date').value    = opt.dataset.date;    // 考試日期
+  modal.querySelector('#gm-subject').value = opt.dataset.sid;     // 科目
+};
+```
+
+每個選項的 `data-*` 屬性（`data-name`、`data-date`、`data-sid`）在 `buildModal()` 產生 HTML 時嵌入，不需要額外查表。
+
+儲存時將 `exam_id` 一起帶入請求：
+
+```js
+exam_id: pickerId ? +pickerId : null,
+```
+
+`PUT /grades/:id` 已補上 `exam_id` 欄位的更新；`exam_id` 可設為 `null`（不連結考試）。
+
+---
+
 ### 考試三分區邏輯（exams.js）
 
 `buildPage()` 依 `days_left` 與 `is_completed` 將考試分成三組：
@@ -1257,4 +1289,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v1.7）。*
+*本文件反映截至 2026-05-23 的實作狀態（v1.8）。*
