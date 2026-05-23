@@ -39,6 +39,8 @@ router.post('/', userCtx, (req, res) => {
   const { subject_id, day_of_week, period, school_year, semester } = req.body;
   if (!subject_id || day_of_week === undefined || !period || !school_year || !semester)
     return res.status(400).json({ error: '缺少必要欄位' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在' });
   try {
     const result = db.prepare(
       'INSERT INTO timetable_slots (user_id, subject_id, day_of_week, period, school_year, semester) VALUES (?, ?, ?, ?, ?, ?)'
