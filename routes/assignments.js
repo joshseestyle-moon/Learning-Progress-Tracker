@@ -9,9 +9,12 @@ router.get('/', userCtx, (req, res) => {
   const params = [req.userId];
 
   if (req.query.upcoming) {
-    // upcoming=Nd → due within N days from today
-    const n = parseInt(req.query.upcoming) || 3;
-    sql += ` AND a.due_date >= date('now') AND a.due_date <= date('now', '+${n} days') AND a.is_done = 0`;
+    const n = Math.max(1, Math.min(365, parseInt(req.query.upcoming) || 3));
+    const limit = new Date();
+    limit.setDate(limit.getDate() + n);
+    const limitStr = limit.toISOString().slice(0, 10);
+    sql += ` AND a.due_date >= date('now','localtime') AND a.due_date <= ? AND a.is_done = 0`;
+    params.push(limitStr);
   }
   sql += ' ORDER BY a.due_date ASC';
   res.json(db.prepare(sql).all(...params));
@@ -20,6 +23,8 @@ router.get('/', userCtx, (req, res) => {
 router.post('/', userCtx, (req, res) => {
   const { subject_id, title, description, due_date } = req.body;
   if (!subject_id || !title || !due_date) return res.status(400).json({ error: '缺少必要欄位' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(
     'INSERT INTO assignments (user_id,subject_id,title,description,due_date) VALUES (?,?,?,?,?)'
   ).run(req.userId, subject_id, title, description || null, due_date);

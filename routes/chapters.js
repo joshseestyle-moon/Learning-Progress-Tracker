@@ -156,7 +156,7 @@ router.post('/:id/review', userCtx, (req, res) => {
   const row = db.prepare(
     "SELECT MAX(seq) AS maxSeq FROM chapter_progress WHERE chapter_id = ? AND user_id = ? AND type = 'review'"
   ).get(req.params.id, req.userId);
-  const nextSeq = (row.maxSeq || 0) + 1;
+  const nextSeq = (row.maxSeq ?? 0) + 1;
   const result = db.prepare(
     "INSERT INTO chapter_progress (user_id,chapter_id,type,seq,is_done) VALUES (?,?,'review',?,0)"
   ).run(req.userId, req.params.id, nextSeq);

@@ -5,7 +5,12 @@ let exams = [];
 let currentSubjectFilter = '';
 
 export async function render(el) {
-  [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
+  try {
+    [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    return;
+  }
   await refresh(el);
 }
 
@@ -43,7 +48,7 @@ function buildPage(grades) {
         <thead><tr><th>日期</th><th>科目</th><th>考試名稱</th><th>分數</th><th>百分比</th><th></th></tr></thead>
         <tbody>
           ${grades.length ? grades.map(g => {
-            const pct = Math.round(g.score / g.max_score * 100);
+            const pct = g.max_score > 0 ? Math.round(g.score / g.max_score * 100) : 0;
             const color = pct >= 80 ? 'var(--success)' : pct >= 60 ? 'var(--warn)' : 'var(--danger)';
             return `<tr>
               <td>${g.exam_date}</td>
@@ -172,7 +177,7 @@ function renderChart(el, grades) {
     subjectColors[g.subject_name] = g.subject_color;
     (bySubject[g.subject_name] = bySubject[g.subject_name] || []).push({
       x: g.exam_date,
-      y: Math.round(g.score / g.max_score * 100),
+      y: g.max_score > 0 ? Math.round(g.score / g.max_score * 100) : 0,
       label: g.exam_name,
     });
   }

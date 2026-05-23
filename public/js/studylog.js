@@ -9,7 +9,12 @@ let timerSubjectId = null;
 let timerChapterId = null;
 
 export async function render(el) {
-  [subjects, allChapters] = await Promise.all([get('/subjects'), get('/chapters')]);
+  try {
+    [subjects, allChapters] = await Promise.all([get('/subjects'), get('/chapters')]);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    return;
+  }
   await refresh(el);
 }
 

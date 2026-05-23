@@ -3,7 +3,12 @@ import { get, post, put, del, patch, escHtml, fmtDate } from './api.js';
 let subjects = [];
 
 export async function render(el) {
-  subjects = await get('/subjects');
+  try {
+    subjects = await get('/subjects');
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    return;
+  }
   await refresh(el);
 }
 

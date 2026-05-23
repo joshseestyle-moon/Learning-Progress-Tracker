@@ -10,12 +10,18 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  const [timetable, exams, scheduled, chapters] = await Promise.all([
-    get('/timetable'),
-    get('/exams?upcoming=5'),
-    get('/chapters/scheduled'),
-    get('/chapters'),
-  ]);
+  let timetable, exams, scheduled, chapters;
+  try {
+    [timetable, exams, scheduled, chapters] = await Promise.all([
+      get('/timetable'),
+      get('/exams?upcoming=5'),
+      get('/chapters/scheduled'),
+      get('/chapters'),
+    ]);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    return;
+  }
 
   const progressMap = {};
   for (const c of chapters) {

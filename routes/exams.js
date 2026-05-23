@@ -9,7 +9,7 @@ router.get('/', userCtx, (req, res) => {
              WHERE e.user_id = ?`;
   const params = [req.userId];
   if (req.query.upcoming) {
-    const n = parseInt(req.query.upcoming) || 3;
+    const n = Math.max(1, Math.min(100, parseInt(req.query.upcoming) || 3));
     sql += ` AND e.is_completed = 0 AND e.exam_date >= date('now') ORDER BY e.exam_date ASC LIMIT ${n}`;
   } else {
     sql += ' ORDER BY e.exam_date ASC';
@@ -20,6 +20,8 @@ router.get('/', userCtx, (req, res) => {
 router.post('/', userCtx, (req, res) => {
   const { subject_id, title, exam_date, exam_type = 'quiz', notes } = req.body;
   if (!subject_id || !title || !exam_date) return res.status(400).json({ error: '缺少必要欄位' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在' });
   const validTypes = ['quiz','segment','midterm','final','mock'];
   if (!validTypes.includes(exam_type)) return res.status(400).json({ error: '無效的考試類型' });
   const result = db.prepare(
