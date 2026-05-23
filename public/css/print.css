@@ -9,11 +9,13 @@
 .print-page {
   max-width: 794px; /* A4 @ 96 dpi */
   margin: 0 auto;
+  padding: 2mm;
   background: #fff;
   color: #111;
   font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
   font-size: 12px;
   line-height: 1.5;
+  box-sizing: border-box;
 }
 
 .print-header {
@@ -34,34 +36,6 @@
   padding-left: 6px;
   margin: 12px 0 6px;
 }
-
-/* ── 上半：課表 + 考試 並排 ── */
-.print-top {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 4px;
-}
-
-/* ── 課表格 ── */
-.print-timetable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10.5px;
-}
-.print-timetable th, .print-timetable td {
-  border: 1px solid #ddd;
-  padding: 3px 4px;
-  text-align: center;
-}
-.print-timetable th { background: #f0f0f0; font-weight: 600; }
-.print-timetable td.subject-cell {
-  font-size: 10px;
-  color: #fff;
-  font-weight: 600;
-  border-radius: 2px;
-}
-.print-timetable td.empty-cell { background: #fafafa; }
 
 /* ── 考試列表 ── */
 .print-exam-row {
@@ -126,34 +100,6 @@
 }
 .print-plan-table tr.done td { color: #aaa; text-decoration: line-through; }
 
-/* ── 讀書進度 ── */
-.print-progress-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10.5px;
-  margin-bottom: 8px;
-}
-.print-progress-table th {
-  background: #f0f0f0;
-  font-weight: 600;
-  padding: 3px 5px;
-  border: 1px solid #ddd;
-  text-align: center;
-}
-.print-progress-table th.left { text-align: left; }
-.print-progress-table td {
-  padding: 2px 5px;
-  border: 1px solid #eee;
-  text-align: center;
-  vertical-align: middle;
-}
-.print-progress-table td.chapter-name { text-align: left; }
-.print-subject-header td {
-  background: #f5f5f5;
-  font-weight: 700;
-  font-size: 11px;
-  padding: 4px 5px;
-}
 .done-mark { color: #16a34a; font-weight: 700; }
 .todo-mark { color: #ccc; }
 
@@ -174,5 +120,5 @@
   .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; }
   body { background: #fff !important; }
   .print-page { max-width: 100%; }
-  @page { size: A4 portrait; margin: 12mm 15mm; }
+  @page { size: A4 portrait; margin: 2mm; }
 }
