@@ -14,8 +14,9 @@ router.get('/', userCtx, (req, res) => {
     FROM chapters c
     JOIN subjects s ON s.id = c.subject_id
     LEFT JOIN chapter_progress prev ON prev.chapter_id = c.id AND prev.user_id = ? AND prev.type = 'preview' AND prev.seq = 1
+    WHERE s.user_id = ?
     ORDER BY c.subject_id, c.sort_order, c.id
-  `).all(req.userId);
+  `).all(req.userId, req.userId);
 
   const reviews = db.prepare(`
     SELECT * FROM chapter_progress
