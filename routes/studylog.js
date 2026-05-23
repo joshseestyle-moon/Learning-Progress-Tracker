@@ -43,6 +43,8 @@ router.get('/by-chapter', userCtx, (req, res) => {
 router.post('/', userCtx, (req, res) => {
   const { subject_id, log_date, minutes, note, chapter_id } = req.body;
   if (!subject_id || !log_date || !minutes) return res.status(400).json({ error: '缺少必要欄位' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(
     'INSERT INTO study_log (user_id,subject_id,log_date,minutes,note,chapter_id) VALUES (?,?,?,?,?,?)'
   ).run(req.userId, subject_id, log_date, minutes, note || null, chapter_id || null);

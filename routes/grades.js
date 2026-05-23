@@ -16,6 +16,8 @@ router.post('/', userCtx, (req, res) => {
   const { subject_id, exam_id, exam_name, exam_date, score, max_score = 100, notes } = req.body;
   if (!subject_id || !exam_name || !exam_date || score === undefined)
     return res.status(400).json({ error: '缺少必要欄位' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(
     'INSERT INTO grades (user_id,subject_id,exam_id,exam_name,exam_date,score,max_score,notes) VALUES (?,?,?,?,?,?,?,?)'
   ).run(req.userId, subject_id, exam_id || null, exam_name, exam_date, score, max_score, notes || null);
