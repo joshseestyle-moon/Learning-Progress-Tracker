@@ -66,7 +66,6 @@ set DIST=dist\class-portable
 
 if exist "%DIST%" rd /s /q "%DIST%"
 mkdir "%DIST%"
-mkdir "%DIST%\data"
 
 echo  複製 Node.js...
 xcopy /e /i /q /y "node"         "%DIST%\node"         >nul
@@ -86,12 +85,7 @@ if exist "package-lock.json" copy /y "package-lock.json" "%DIST%\package-lock.js
 if exist ".env"          copy /y ".env"         "%DIST%\.env"         >nul
 copy /y "啟動.bat"       "%DIST%\啟動.bat"      >nul
 
-if exist "data\app.db" (
-  copy /y "data\app.db" "%DIST%\data\app.db" >nul
-  echo  已包含資料庫（含現有資料）。
-) else (
-  echo  資料庫尚無資料，將於目標機首次啟動時自動建立。
-)
+echo  資料庫將於目標機首次啟動時自動建立（不含現有資料）。
 
 echo.
 
