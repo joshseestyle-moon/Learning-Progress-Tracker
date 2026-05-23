@@ -25,10 +25,11 @@ router.post('/', userCtx, (req, res) => {
 router.put('/:id', userCtx, (req, res) => {
   const g = db.prepare('SELECT * FROM grades WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!g) return res.status(404).json({ error: '不存在' });
-  const { subject_id, exam_name, exam_date, score, max_score, notes } = req.body;
-  db.prepare('UPDATE grades SET subject_id=?,exam_name=?,exam_date=?,score=?,max_score=?,notes=? WHERE id=?')
+  const { subject_id, exam_id, exam_name, exam_date, score, max_score, notes } = req.body;
+  db.prepare('UPDATE grades SET subject_id=?,exam_id=?,exam_name=?,exam_date=?,score=?,max_score=?,notes=? WHERE id=?')
     .run(
       subject_id || g.subject_id,
+      exam_id !== undefined ? (exam_id || null) : g.exam_id,
       exam_name || g.exam_name,
       exam_date || g.exam_date,
       score !== undefined ? score : g.score,

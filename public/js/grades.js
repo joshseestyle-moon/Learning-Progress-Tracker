@@ -1,10 +1,11 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
 
 let subjects = [];
+let exams = [];
 let currentSubjectFilter = '';
 
 export async function render(el) {
-  subjects = await get('/subjects');
+  [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
   await refresh(el);
 }
 
@@ -68,6 +69,19 @@ function buildModal(g) {
     <div class="modal-box">
       <div class="modal-title">${g.id ? '編輯成績' : '新增成績'}</div>
       <div class="form-group">
+        <label class="form-label">從考試倒數選擇（選填）</label>
+        <select id="gm-exam-pick" class="form-select">
+          <option value="">— 不連結考試 —</option>
+          ${exams.map(e => `<option value="${e.id}"
+            data-name="${escHtml(e.title)}"
+            data-date="${e.exam_date}"
+            data-sid="${e.subject_id}"
+            ${g.exam_id == e.id ? 'selected' : ''}>
+            ${escHtml(e.subject_name)}・${escHtml(e.title)}（${fmtDate(e.exam_date)}）
+          </option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
         <label class="form-label">科目</label>
         <select id="gm-subject" class="form-select">
           ${subjects.map(s => `<option value="${s.id}" ${g.subject_id==s.id?'selected':''}>${escHtml(s.name)}</option>`).join('')}
@@ -107,6 +121,16 @@ function openModal(el, grade) {
   const modal = el.querySelector('#gr-modal');
   modal.innerHTML = buildModal(grade);
   modal.classList.remove('hidden');
+
+  const picker = modal.querySelector('#gm-exam-pick');
+  picker.onchange = () => {
+    const opt = picker.options[picker.selectedIndex];
+    if (!opt.value) return;
+    modal.querySelector('#gm-name').value    = opt.dataset.name;
+    modal.querySelector('#gm-date').value    = opt.dataset.date;
+    modal.querySelector('#gm-subject').value = opt.dataset.sid;
+  };
+
   modal.querySelector('#gm-cancel').onclick = () => modal.classList.add('hidden');
   modal.querySelector('#gm-save').onclick   = () => save(el, grade);
   const delBtn = modal.querySelector('#gm-del');
@@ -116,8 +140,10 @@ function openModal(el, grade) {
 
 async function save(el, existing) {
   const modal = el.querySelector('#gr-modal');
+  const pickerId = modal.querySelector('#gm-exam-pick').value;
   const body = {
     subject_id: +modal.querySelector('#gm-subject').value,
+    exam_id: pickerId ? +pickerId : null,
     exam_name: modal.querySelector('#gm-name').value.trim(),
     exam_date: modal.querySelector('#gm-date').value,
     score: +modal.querySelector('#gm-score').value,
