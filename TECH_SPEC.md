@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.6　　最後更新：2026-05-23  
+> 版本：1.7　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -863,6 +863,48 @@ function getWeekRange() {
 
 ---
 
+### 考試三分區邏輯（exams.js）
+
+`buildPage()` 依 `days_left` 與 `is_completed` 將考試分成三組：
+
+```js
+const upcoming = exams.filter(e => !e.is_completed && e.days_left >= 0);
+const expired  = exams.filter(e => !e.is_completed && e.days_left < 0);
+const done     = exams.filter(e =>  e.is_completed);
+```
+
+倒數 label 三種狀態：
+
+```js
+d < 0  → `已過 ${-d} 天`   // 過期
+d === 0 → '今天！'
+d > 0  → `${d} 天後`
+```
+
+「清除已過期」按鈕以 `Promise.all` 並行呼叫每筆過期考試的 `PUT /exams/:id`，無需新增後端端點：
+
+```js
+await Promise.all(expired.map(e => put('/exams/' + e.id, { is_completed: true })));
+```
+
+### 讀書進度批次刪除章節（chapters route）
+
+`DELETE /api/chapters?subject_id=X` 先驗證科目所有權，再一次刪除該科目所有章節：
+
+```js
+router.delete('/', userCtx, (req, res) => {
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?')
+                    .get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在或無權限' });
+  const { changes } = db.prepare('DELETE FROM chapters WHERE subject_id = ?').run(subject_id);
+  res.json({ ok: true, deleted: changes });
+});
+```
+
+`chapters` 刪除後 `chapter_progress` 透過 FK CASCADE 自動清除。此路由必須定義在 `DELETE /:id` 之前，否則空路徑 `/` 被 Express 解析時會落入錯誤的 handler。
+
+---
+
 ### 跨頁面共用的 progressMap 模式
 
 `exams.js` 與 `dashboard.js` 的考試倒數區塊都需要顯示科目讀書進度，兩者採用相同的計算邏輯：
@@ -1215,4 +1257,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v1.6）。*
+*本文件反映截至 2026-05-23 的實作狀態（v1.7）。*
