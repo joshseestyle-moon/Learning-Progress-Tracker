@@ -1,8 +1,18 @@
 import { get, post, put, del, patch, escHtml } from './api.js';
 
 const PRESET_COLORS = [
-  '#4f6ef7','#22c55e','#f59e0b','#e04040',
-  '#a855f7','#06b6d4','#ec4899','#84cc16',
+  // 藍
+  '#4f6ef7','#3b82f6','#0ea5e9','#06b6d4',
+  // 綠 & 青
+  '#14b8a6','#10b981','#22c55e','#84cc16',
+  // 黃 & 橘
+  '#eab308','#f59e0b','#f97316','#fb923c',
+  // 紅 & 粉
+  '#ef4444','#e04040','#f43f5e','#ec4899',
+  // 紫 & 靛
+  '#a855f7','#8b5cf6','#6366f1','#7c3aed',
+  // 深藍 & 深綠 & 深紅 & 深紫
+  '#0891b2','#059669','#dc2626','#9333ea',
 ];
 
 export async function render(el) {
@@ -84,13 +94,13 @@ function buildSubjectModal(s) {
       </div>
       <div class="form-group">
         <label class="form-label">代表顏色</label>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;" id="sm-colors">
+        <div style="display:grid;grid-template-columns:repeat(6,32px);gap:.4rem;" id="sm-colors">
           ${PRESET_COLORS.map(c => `
             <div class="sm-color-swatch" data-color="${c}" style="
               width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;
               border:3px solid ${(s.color||PRESET_COLORS[0])===c ? '#fff' : 'transparent'};
               box-shadow:${(s.color||PRESET_COLORS[0])===c ? '0 0 0 2px var(--accent)' : 'none'};
-              transition:.1s;flex-shrink:0;
+              transition:.1s;
             "></div>`).join('')}
         </div>
         <input id="sm-color-val" type="hidden" value="${s.color||PRESET_COLORS[0]}">
