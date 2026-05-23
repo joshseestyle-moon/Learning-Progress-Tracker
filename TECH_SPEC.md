@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.8　　最後更新：2026-05-23  
+> 版本：1.9　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -821,6 +821,28 @@ if (!xCols.includes('new_column')) {
 
 ---
 
+### 列印版面規格（print.css）
+
+| 項目 | 規格 |
+|---|---|
+| 方向 | 橫式（landscape） |
+| 紙張 | `297mm × 210mm` |
+| `@page` margin | `2mm` |
+| 螢幕預覽寬度 | `297mm`（與列印完全一致，不需換算） |
+| 列印內容寬度 | `293mm`（297mm − 2mm × 2） |
+| 色彩輸出 | `print-color-adjust: exact`（確保 badge 顏色正確列印） |
+
+```css
+@page { size: 297mm 210mm landscape; margin: 2mm; }
+.print-page { width: 297mm; }          /* 螢幕預覽 */
+
+@media print {
+  html, body, .main-content { width: 297mm; }
+  .print-page { width: 293mm; }        /* 列印內容 */
+  * { print-color-adjust: exact !important; }
+}
+```
+
 ### 列印週計畫（print.js）
 
 `print.js` 的 `render(el)` 以 `Promise.all` 並行取得四支 API：
@@ -1289,4 +1311,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v1.8）。*
+*本文件反映截至 2026-05-23 的實作狀態（v1.9）。*
