@@ -45,17 +45,19 @@ function buildPage(grades) {
     <div class="card">
       <div class="card-title">成績列表</div>
       <table class="data-table">
-        <thead><tr><th>日期</th><th>科目</th><th>考試名稱</th><th>分數</th><th>百分比</th><th></th></tr></thead>
+        <thead><tr><th>日期</th><th>科目</th><th>考試名稱</th><th>分數</th><th style="width:90px;">班排名</th><th></th></tr></thead>
         <tbody>
           ${grades.length ? grades.map(g => {
-            const pct = g.max_score > 0 ? Math.round(g.score / g.max_score * 100) : 0;
-            const color = pct >= 80 ? 'var(--success)' : pct >= 60 ? 'var(--warn)' : 'var(--danger)';
             return `<tr>
               <td>${g.exam_date}</td>
               <td><span class="badge" style="background:${g.subject_color}">${escHtml(g.subject_name)}</span></td>
               <td>${escHtml(g.exam_name)}</td>
               <td>${g.score} / ${g.max_score}</td>
-              <td><span style="font-weight:700;color:${color}">${pct}%</span></td>
+              <td>
+                <input class="form-input gr-rank-input" data-id="${g.id}"
+                  value="${escHtml(g.class_rank||'')}" placeholder="—"
+                  style="width:80px;padding:.2rem .4rem;font-size:.85rem;text-align:center;">
+              </td>
               <td style="display:flex;gap:.4rem;">
                 <button class="btn btn-ghost btn-sm gr-edit-btn" data-id="${g.id}">編輯</button>
                 <button class="btn btn-danger btn-sm gr-del-btn" data-id="${g.id}">✕</button>
@@ -111,6 +113,10 @@ function buildModal(g) {
         </div>
       </div>
       <div class="form-group">
+        <label class="form-label">班排名（選填）</label>
+        <input id="gm-rank" class="form-input" value="${escHtml(g.class_rank||'')}" placeholder="例：3 或 3/40">
+      </div>
+      <div class="form-group">
         <label class="form-label">備註（選填）</label>
         <input id="gm-notes" class="form-input" value="${escHtml(g.notes||'')}">
       </div>
@@ -153,6 +159,7 @@ async function save(el, existing) {
     exam_date: modal.querySelector('#gm-date').value,
     score: +modal.querySelector('#gm-score').value,
     max_score: +modal.querySelector('#gm-max').value || 100,
+    class_rank: modal.querySelector('#gm-rank').value.trim() || null,
     notes: modal.querySelector('#gm-notes').value.trim() || null,
   };
   if (!body.exam_name || !body.exam_date || isNaN(body.score)) return alert('請填寫必要欄位');
@@ -217,5 +224,18 @@ function attachEvents(el, grades) {
   });
   el.querySelectorAll('.gr-del-btn').forEach(btn => {
     btn.onclick = () => deleteGrade(el, +btn.dataset.id);
+  });
+
+  // Inline rank editing — save on blur or Enter
+  el.querySelectorAll('.gr-rank-input').forEach(input => {
+    const save = async () => {
+      try {
+        await put('/grades/' + input.dataset.id, { class_rank: input.value.trim() || null });
+      } catch (e) {
+        alert('儲存失敗：' + e.message);
+      }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   });
 }

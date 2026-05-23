@@ -13,22 +13,22 @@ router.get('/', userCtx, (req, res) => {
 });
 
 router.post('/', userCtx, (req, res) => {
-  const { subject_id, exam_id, exam_name, exam_date, score, max_score = 100, notes } = req.body;
+  const { subject_id, exam_id, exam_name, exam_date, score, max_score = 100, notes, class_rank } = req.body;
   if (!subject_id || !exam_name || !exam_date || score === undefined)
     return res.status(400).json({ error: '缺少必要欄位' });
   const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
   if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(
-    'INSERT INTO grades (user_id,subject_id,exam_id,exam_name,exam_date,score,max_score,notes) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(req.userId, subject_id, exam_id || null, exam_name, exam_date, score, max_score, notes || null);
+    'INSERT INTO grades (user_id,subject_id,exam_id,exam_name,exam_date,score,max_score,notes,class_rank) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(req.userId, subject_id, exam_id || null, exam_name, exam_date, score, max_score, notes || null, class_rank || null);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
 router.put('/:id', userCtx, (req, res) => {
   const g = db.prepare('SELECT * FROM grades WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!g) return res.status(404).json({ error: '不存在' });
-  const { subject_id, exam_id, exam_name, exam_date, score, max_score, notes } = req.body;
-  db.prepare('UPDATE grades SET subject_id=?,exam_id=?,exam_name=?,exam_date=?,score=?,max_score=?,notes=? WHERE id=?')
+  const { subject_id, exam_id, exam_name, exam_date, score, max_score, notes, class_rank } = req.body;
+  db.prepare('UPDATE grades SET subject_id=?,exam_id=?,exam_name=?,exam_date=?,score=?,max_score=?,notes=?,class_rank=? WHERE id=?')
     .run(
       subject_id || g.subject_id,
       exam_id !== undefined ? (exam_id || null) : g.exam_id,
@@ -37,6 +37,7 @@ router.put('/:id', userCtx, (req, res) => {
       score !== undefined ? score : g.score,
       max_score !== undefined ? max_score : g.max_score,
       notes !== undefined ? notes : g.notes,
+      class_rank !== undefined ? (class_rank || null) : g.class_rank,
       req.params.id
     );
   res.json({ ok: true });

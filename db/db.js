@@ -163,6 +163,12 @@ function openAndMigrate() {
   // Ensure index exists regardless of migration path
   db.exec('CREATE INDEX IF NOT EXISTS idx_subjects_user ON subjects(user_id)');
 
+  // Migration 9: add class_rank to grades
+  const gradeCols = db.pragma('table_info(grades)').map(c => c.name);
+  if (!gradeCols.includes('class_rank')) {
+    db.exec('ALTER TABLE grades ADD COLUMN class_rank TEXT');
+  }
+
   return db;
 }
 
