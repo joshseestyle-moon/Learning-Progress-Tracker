@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.9　　最後更新：2026-05-23  
+> 版本：2.0　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -339,6 +339,20 @@ r.fn(view).catch(err => {
 
 使用者操作（表單送出、刪除）的輸入驗證以 `alert()` 或 `confirm()` 呈現。
 
+各頁面模組的 `render()` 函式在並行 API 呼叫外層包有 `try/catch`，若載入失敗會在 `el` 內顯示紅色錯誤訊息而非空白畫面：
+
+```js
+export async function render(el) {
+  try {
+    [subjects, data] = await Promise.all([get('/subjects'), get('/data')]);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    return;
+  }
+  await refresh(el);
+}
+```
+
 ---
 
 ## 8. 安全設計
@@ -372,6 +386,26 @@ db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
 
 // 不存在此模式（從不這樣做）
 // db.exec(`SELECT * FROM users WHERE id = ${req.params.id}`)
+```
+
+查詢字串參數（`?upcoming=N`）在使用前以 `parseInt + clamp` 轉為安全整數，消除 LIMIT 或日期字串插值風險：
+
+```js
+const n = Math.max(1, Math.min(100, parseInt(req.query.upcoming) || 3));
+// assignments 的日期上限以 JS 計算後作為參數傳入，不插值至 SQL 字串
+const limit = new Date();
+limit.setDate(limit.getDate() + n);
+params.push(limit.toISOString().slice(0, 10));
+```
+
+### 資源所有權驗證
+
+POST assignments 與 POST exams 在 INSERT 前先驗證 `subject_id` 屬於當前使用者，防止跨使用者資料關聯：
+
+```js
+const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?')
+                  .get(subject_id, req.userId);
+if (!subject) return res.status(403).json({ error: '科目不存在' });
 ```
 
 ### CSRF 考量
@@ -845,25 +879,21 @@ if (!xCols.includes('new_column')) {
 
 ### 列印週計畫（print.js）
 
-`print.js` 的 `render(el)` 以 `Promise.all` 並行取得四支 API：
+`print.js` 的 `render(el)` 以 `Promise.all` 並行取得兩支 API（課表與讀書進度已移除，版面精簡為考試清單＋本週計畫）：
 
 ```js
-const [timetable, exams, scheduled, chapters] = await Promise.all([
-  get('/timetable'),
+const [exams, scheduled] = await Promise.all([
   get('/exams?upcoming=8'),
   get('/chapters/scheduled'),
-  get('/chapters'),
 ]);
 ```
 
-並行取得後以純函式建構四個 HTML 區塊：
+並行取得後以純函式建構 HTML 區塊：
 
 | 函式 | 資料來源 | 說明 |
 |---|---|---|
-| `buildTimetable(slots)` | `/timetable` | 僅顯示有課的星期與節次，過濾空白欄/列 |
-| `buildExams(exams, progMap)` | `/exams?upcoming=8` + progressMap | 未完成考試，含進度條 |
-| `buildWeekPlan(items, today)` | `/chapters/scheduled` 篩本週 | 本週排定的預習/複習項目 |
-| `buildProgress(chapters)` | `/chapters` | 以科目分組的章節進度表格 |
+| `buildExams(exams)` | `/exams?upcoming=8` | 未完成考試，含天數倒數色彩標示 |
+| `buildWeekPlan(items, today)` | `/chapters/scheduled` 篩本週 | 本週排定的預習/複習項目表格 |
 
 `getWeekRange()` 計算當週週一（Mon=0）到週日：
 
@@ -878,10 +908,10 @@ function getWeekRange() {
 ```
 
 **列印樣式設計**：
-- `max-width: 794px`（A4 @ 96dpi）讓螢幕預覽接近 A4
-- `.print-top` 使用 `grid-template-columns: 1fr 1fr` 左右並排課表和考試
-- `@media print { @page { size: A4 portrait; margin: 12mm 15mm; } }`
+- 螢幕預覽：`.print-page { width: 297mm; }`，與列印尺寸完全一致
+- `@media print { @page { size: 297mm 210mm landscape; margin: 2mm; } }`
 - `@media print` 中 `.sidebar`、`.topbar`、`.print-controls` 設 `display: none !important`
+- 列印內容寬 `293mm`（297mm − 兩側各 2mm margin）
 
 ---
 
@@ -914,6 +944,12 @@ exam_id: pickerId ? +pickerId : null,
 ```
 
 `PUT /grades/:id` 已補上 `exam_id` 欄位的更新；`exam_id` 可設為 `null`（不連結考試）。
+
+百分比計算有防除以零保護：
+
+```js
+const pct = g.max_score > 0 ? Math.round(g.score / g.max_score * 100) : 0;
+```
 
 ---
 
@@ -1311,4 +1347,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v1.9）。*
+*本文件反映截至 2026-05-23 的實作狀態（v2.0）。*
