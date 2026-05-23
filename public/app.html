@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>學習管理系統</title>
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/app.css">
+  <!-- Chart.js — download to vendor/chart.min.js for offline use -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">📚 <span>學習</span>管理</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-route="dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">🏠</span> 今日概覽
+      </div>
+      <div class="nav-item" data-route="timetable" onclick="navigate('timetable')">
+        <span class="nav-icon">📅</span> 每週課表
+      </div>
+      <div class="nav-item" data-route="calendar" onclick="navigate('calendar')">
+        <span class="nav-icon">🗓️</span> 行事曆
+      </div>
+      <div class="nav-item" data-route="exams" onclick="navigate('exams')">
+        <span class="nav-icon">⏰</span> 考試倒數
+      </div>
+      <div class="nav-item" data-route="chapters" onclick="navigate('chapters')">
+        <span class="nav-icon">📖</span> 讀書進度
+      </div>
+      <div class="nav-item" data-route="studylog" onclick="navigate('studylog')">
+        <span class="nav-icon">⏱️</span> 讀書時間
+      </div>
+      <div class="nav-item" data-route="grades" onclick="navigate('grades')">
+        <span class="nav-icon">🏆</span> 成績紀錄
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0;"></div>
+      <div class="nav-item" data-route="subjects" onclick="navigate('subjects')">
+        <span class="nav-icon">⚙️</span> 課程資訊
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user" id="sidebar-username">載入中…</div>
+      <div class="sidebar-switch" onclick="switchUser()">← 切換帳號</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="topbar">
+      <h1 class="page-title" id="page-title">今日概覽</h1>
+      <button class="theme-toggle" onclick="toggleTheme()">🌙 切換主題</button>
+    </div>
+    <div id="view"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initRouter, navigate as nav } from './js/router.js';
+  import { getUserId, getUserName } from './js/api.js';
+
+  // Guard: redirect to picker if no user selected
+  if (!getUserId()) { location.href = '/'; }
+
+  // Expose navigate globally for sidebar onclick
+  window.navigate = (hash) => { location.hash = hash; };
+
+  // Display username
+  document.getElementById('sidebar-username').textContent = getUserName() || '使用者';
+
+  // Switch user
+  window.switchUser = () => { location.href = '/'; };
+
+  // Theme
+  window.toggleTheme = () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+  };
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
+
+  initRouter();
+</script>
+</body>
+</html>

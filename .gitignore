@@ -1,0 +1,19 @@
+# 資料庫（含使用者資料，不上傳）
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# 相依套件
+node_modules/
+
+# 可攜版輸出
+dist/
+node/
+
+# 環境變數
+.env
+
+# 系統檔
+.DS_Store
+Thumbs.db
+desktop.ini
