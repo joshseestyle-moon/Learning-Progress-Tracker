@@ -9,12 +9,25 @@ export async function render(el) {
 }
 
 async function refresh(el) {
-  const exams = await get('/exams');
-  el.innerHTML = buildPage(exams);
+  const [exams, chapters] = await Promise.all([get('/exams'), get('/chapters')]);
+  const progressMap = buildProgressMap(chapters);
+  el.innerHTML = buildPage(exams, progressMap);
   attachEvents(el, exams);
 }
 
-function buildPage(exams) {
+function buildProgressMap(chapters) {
+  const map = {};
+  for (const c of chapters) {
+    if (!map[c.subject_id]) map[c.subject_id] = { total: 0, prevDone: 0, revDone: 0 };
+    const p = map[c.subject_id];
+    p.total++;
+    if (c.preview_done) p.prevDone++;
+    if ((c.reviews || []).some(r => r.is_done)) p.revDone++;
+  }
+  return map;
+}
+
+function buildPage(exams, progressMap) {
   const upcoming = exams.filter(e => !e.is_completed);
   const done     = exams.filter(e => e.is_completed);
 
@@ -26,34 +39,59 @@ function buildPage(exams) {
 
     <div class="card" style="margin-bottom:1.25rem;">
       <div class="card-title">即將到來 (${upcoming.length})</div>
-      ${upcoming.length ? upcoming.map(e => examCard(e)).join('') :
+      ${upcoming.length ? upcoming.map(e => examCard(e, progressMap[e.subject_id])).join('') :
         '<div class="text-muted text-sm">沒有即將到來的考試</div>'}
     </div>
 
     ${done.length ? `
     <div class="card">
       <div class="card-title" style="color:var(--text2)">已完成 (${done.length})</div>
-      ${done.map(e => examCard(e)).join('')}
+      ${done.map(e => examCard(e, progressMap[e.subject_id])).join('')}
     </div>` : ''}
 
     <div id="exam-modal" class="modal-overlay hidden">${buildModal()}</div>`;
 }
 
-function examCard(e) {
+function examCard(e, prog) {
   const d = e.days_left;
   const urgency = d <= 3 ? 'urgent' : d <= 7 ? 'soon' : 'ok';
+
+  let progressBar = '';
+  if (prog && prog.total > 0) {
+    const prevPct = Math.round(prog.prevDone / prog.total * 100);
+    const revPct  = Math.round(prog.revDone  / prog.total * 100);
+    progressBar = `
+      <div style="margin-top:.55rem;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">預習</span>
+          <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
+            <div style="height:100%;width:${prevPct}%;background:var(--accent);border-radius:999px;transition:width .3s;"></div>
+          </div>
+          <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.prevDone}/${prog.total}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">複習</span>
+          <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
+            <div style="height:100%;width:${revPct}%;background:var(--success);border-radius:999px;transition:width .3s;"></div>
+          </div>
+          <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.revDone}/${prog.total}</span>
+        </div>
+      </div>`;
+  }
+
   return `
     <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:.75rem 0;border-bottom:1px solid var(--border);">
-      <div style="flex:1;">
-        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap;">
           <span class="badge" style="background:${e.subject_color}">${escHtml(e.subject_name)}</span>
           <span class="chip">${TYPE_LABEL[e.exam_type]||e.exam_type}</span>
           ${!e.is_completed ? `<span class="countdown-pill ${urgency}">${d <= 0 ? '今天！' : d+'天後'}</span>` : ''}
         </div>
         <div style="font-weight:600;margin-bottom:.15rem;">${escHtml(e.title)}</div>
         <div class="text-xs text-muted">${fmtDate(e.exam_date)}${e.notes?'・'+escHtml(e.notes):''}</div>
+        ${progressBar}
       </div>
-      <div style="display:flex;gap:.5rem;align-items:center;margin-left:1rem;">
+      <div style="display:flex;gap:.5rem;align-items:center;margin-left:1rem;flex-shrink:0;">
         <button class="btn btn-ghost btn-sm exam-toggle-btn" data-id="${e.id}" data-done="${e.is_completed}">
           ${e.is_completed ? '↩ 取消完成' : '✓ 完成'}
         </button>

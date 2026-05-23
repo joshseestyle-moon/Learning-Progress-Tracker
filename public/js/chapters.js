@@ -31,9 +31,9 @@ function buildPage(chapters, timeMap = {}) {
       <button class="btn btn-primary" id="ch-add-btn" style="flex-shrink:0;margin-left:1rem;">+ 新增章節</button>
     </div>
     ${Object.keys(bySubject).length ? Object.entries(bySubject).map(([sid, grp]) => {
-      const total   = grp.items.length;
+      const total    = grp.items.length;
       const prevDone = grp.items.filter(c => c.preview_done).length;
-      const revDone  = grp.items.filter(c => c.review_done).length;
+      const revDone  = grp.items.filter(c => (c.reviews || []).some(r => r.is_done)).length;
       return `
         <div class="accordion-item" style="margin-bottom:.85rem;">
           <div class="accordion-header" onclick="toggleAccordion(this)">
@@ -44,7 +44,7 @@ function buildPage(chapters, timeMap = {}) {
             </div>
             <div style="display:flex;align-items:center;gap:1rem;">
               <span class="text-xs" style="color:var(--accent);">預習 ${prevDone}/${total}</span>
-              <span class="text-xs" style="color:var(--success);">複習 ${revDone}/${total}</span>
+              <span class="text-xs" style="color:var(--success);">已複習 ${revDone}/${total}</span>
               <span style="color:var(--text3);">▼</span>
             </div>
           </div>
@@ -52,11 +52,11 @@ function buildPage(chapters, timeMap = {}) {
             <table style="width:100%;border-collapse:collapse;font-size:.87rem;">
               <thead>
                 <tr style="background:var(--bg3);">
-                  <th style="padding:.5rem .85rem;text-align:left;color:var(--text2);font-size:.78rem;width:35%;">章節</th>
-                  <th style="padding:.5rem .5rem;text-align:center;color:var(--accent);font-size:.78rem;width:22%;">📖 預習</th>
-                  <th style="padding:.5rem .5rem;text-align:center;color:var(--success);font-size:.78rem;width:22%;">✏️ 複習</th>
-                  <th style="padding:.5rem .5rem;text-align:center;color:var(--warn);font-size:.78rem;width:12%;">⏱ 時間</th>
-                  <th style="padding:.5rem .5rem;width:9%;"></th>
+                  <th style="padding:.5rem .85rem;text-align:left;color:var(--text2);font-size:.78rem;width:30%;">章節</th>
+                  <th style="padding:.5rem .5rem;text-align:center;color:var(--accent);font-size:.78rem;width:20%;">📖 預習</th>
+                  <th style="padding:.5rem .5rem;text-align:left;color:var(--success);font-size:.78rem;width:35%;">✏️ 複習</th>
+                  <th style="padding:.5rem .5rem;text-align:center;color:var(--warn);font-size:.78rem;width:9%;">⏱ 時間</th>
+                  <th style="padding:.5rem .5rem;width:6%;"></th>
                 </tr>
               </thead>
               <tbody>
@@ -74,16 +74,18 @@ function buildPage(chapters, timeMap = {}) {
 }
 
 function chapterRow(c, minutes) {
+  const reviews = c.reviews || [];
+  const allRevDone = reviews.length > 0 && reviews.every(r => r.is_done);
   return `
-    <tr style="border-bottom:1px solid var(--border);" data-ch-id="${c.id}">
-      <td style="padding:.55rem .85rem;font-weight:${c.review_done?'400':'600'};${c.review_done?'text-decoration:line-through;color:var(--text3)':''};">
+    <tr style="border-bottom:1px solid var(--border);vertical-align:top;" data-ch-id="${c.id}">
+      <td style="padding:.55rem .85rem;font-weight:${allRevDone?'400':'600'};${allRevDone?'text-decoration:line-through;color:var(--text3)':''};">
         ${escHtml(c.title)}
       </td>
       <td style="padding:.4rem .5rem;text-align:center;">
-        ${progressCell(c.id, 'preview', c.preview_done, c.preview_date)}
+        ${previewCell(c)}
       </td>
-      <td style="padding:.4rem .5rem;text-align:center;">
-        ${progressCell(c.id, 'review', c.review_done, c.review_date)}
+      <td style="padding:.4rem .5rem;">
+        ${reviewsCell(c.id, reviews)}
       </td>
       <td style="padding:.4rem .5rem;text-align:center;">
         ${minutes > 0
@@ -96,22 +98,64 @@ function chapterRow(c, minutes) {
     </tr>`;
 }
 
-function progressCell(chId, type, isDone, date) {
-  const label = type === 'preview' ? '預習' : '複習';
-  const color  = type === 'preview' ? 'var(--accent)' : 'var(--success)';
-  const doneStyle = isDone
+function previewCell(c) {
+  const color = 'var(--accent)';
+  const doneStyle = c.preview_done
     ? `background:${color};color:#fff;`
     : `border:1.5px dashed ${color};color:${color};background:transparent;`;
-
   return `
     <div style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;">
-      <button class="ch-toggle-btn" data-id="${chId}" data-type="${type}"
+      <button class="ch-toggle-btn" data-id="${c.id}" data-type="preview"
         style="padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;">
-        ${isDone ? '✓ ' + label : label}
+        ${c.preview_done ? '✓ 預習' : '預習'}
       </button>
-      <button class="ch-date-btn text-xs" data-id="${chId}" data-type="${type}" data-date="${date||''}"
-        style="color:${date?color:'var(--text3)'};cursor:pointer;background:none;border:none;font-size:.72rem;padding:0;">
-        ${date ? fmtDate(date) : '+ 設定日期'}
+      <button class="ch-date-btn text-xs" data-id="${c.id}" data-type="preview"
+        data-date="${c.preview_date||''}" data-notes="${escHtml(c.preview_notes||'')}"
+        style="color:${c.preview_date?color:'var(--text3)'};cursor:pointer;background:none;border:none;font-size:.72rem;padding:0;">
+        ${c.preview_date ? fmtDate(c.preview_date) : '+ 設定日期'}
+      </button>
+      ${c.preview_notes
+        ? `<span class="text-xs" title="${escHtml(c.preview_notes)}"
+             style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:.68rem;">
+             📝 ${escHtml(c.preview_notes)}
+           </span>`
+        : ''}
+    </div>`;
+}
+
+function reviewsCell(chId, reviews) {
+  const color = 'var(--success)';
+  return `
+    <div style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:5px;">
+      ${reviews.map(r => {
+        const doneStyle = r.is_done
+          ? `background:${color};color:#fff;`
+          : `border:1.5px dashed ${color};color:${color};background:transparent;`;
+        return `
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <button class="rev-toggle-btn" data-pid="${r.id}"
+            style="padding:.15rem .45rem;border-radius:999px;font-size:.73rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;white-space:nowrap;">
+            ${r.is_done ? '✓ ' : ''}第${r.seq}次複習
+          </button>
+          <button class="rev-date-btn" data-pid="${r.id}"
+            data-date="${r.scheduled_date||''}" data-notes="${escHtml(r.notes||'')}" data-seq="${r.seq}"
+            style="color:${r.scheduled_date?color:'var(--text3)'};cursor:pointer;background:none;border:none;font-size:.7rem;padding:0;white-space:nowrap;">
+            ${r.scheduled_date ? fmtDate(r.scheduled_date) : '+ 日期'}
+          </button>
+          ${r.notes
+            ? `<span title="${escHtml(r.notes)}" style="font-size:.68rem;color:var(--text2);cursor:default;">📝</span>`
+            : ''}
+          <button class="rev-del-btn" data-pid="${r.id}"
+            style="width:16px;height:16px;border-radius:50%;background:transparent;border:1px solid var(--text3);
+                   color:var(--text3);font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+                   padding:0;flex-shrink:0;line-height:1;">✕</button>
+        </div>`;
+      }).join('')}
+      <button class="rev-add-btn" data-ch-id="${chId}"
+        style="font-size:.72rem;color:${color};background:none;
+               border:1.5px dashed ${color};border-radius:999px;
+               padding:.15rem .55rem;cursor:pointer;white-space:nowrap;margin-top:2px;">
+        + 新增複習
       </button>
     </div>`;
 }
@@ -142,14 +186,19 @@ function buildModal(c) {
     </div>`;
 }
 
-function buildDateModal(chId, type, currentDate) {
-  const label = type === 'preview' ? '預習' : '複習';
+function buildDateModal(title, currentDate, currentNotes) {
   return `
-    <div class="modal-box" style="max-width:340px;">
-      <div class="modal-title">設定${label}日期</div>
+    <div class="modal-box" style="max-width:380px;">
+      <div class="modal-title">${title}</div>
       <div class="form-group">
         <label class="form-label">排定日期</label>
         <input id="dm-date" type="date" class="form-input" value="${currentDate||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">備註</label>
+        <textarea id="dm-notes" class="form-input" rows="3"
+          placeholder="填寫學習狀況、重點或待補內容…"
+          style="resize:vertical;">${escHtml(currentNotes||'')}</textarea>
       </div>
       <div class="modal-footer">
         ${currentDate ? `<button class="btn btn-ghost btn-sm" id="dm-clear">清除日期</button>` : ''}
@@ -157,6 +206,29 @@ function buildDateModal(chId, type, currentDate) {
         <button class="btn btn-primary" id="dm-save">確認</button>
       </div>
     </div>`;
+}
+
+function openDateModal(el, title, currentDate, currentNotes, onSave, onClear) {
+  const modal = el.querySelector('#date-modal');
+  modal.innerHTML = buildDateModal(title, currentDate, currentNotes);
+  modal.classList.remove('hidden');
+  modal.querySelector('#dm-cancel').onclick = () => modal.classList.add('hidden');
+  modal.querySelector('#dm-save').onclick = async () => {
+    const date  = modal.querySelector('#dm-date').value || null;
+    const notes = modal.querySelector('#dm-notes').value;
+    await onSave(date, notes);
+    modal.classList.add('hidden');
+    await refresh(el);
+  };
+  const clearBtn = modal.querySelector('#dm-clear');
+  if (clearBtn) clearBtn.onclick = async () => {
+    const notes = modal.querySelector('#dm-notes').value;
+    await onClear(notes);
+    modal.classList.add('hidden');
+    await refresh(el);
+  };
+  modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
+  setTimeout(() => modal.querySelector('#dm-notes').focus(), 50);
 }
 
 function openModal(el, chapter, preSubject) {
@@ -168,26 +240,6 @@ function openModal(el, chapter, preSubject) {
   modal.querySelector('#ch-save').onclick   = () => save(el, chapter);
   modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
   setTimeout(() => modal.querySelector('#ch-title').focus(), 50);
-}
-
-function openDateModal(el, chId, type, currentDate) {
-  const modal = el.querySelector('#date-modal');
-  modal.innerHTML = buildDateModal(chId, type, currentDate);
-  modal.classList.remove('hidden');
-  modal.querySelector('#dm-cancel').onclick = () => modal.classList.add('hidden');
-  modal.querySelector('#dm-save').onclick = async () => {
-    const date = modal.querySelector('#dm-date').value || null;
-    await patch('/chapters/' + chId + '/progress', { type, scheduled_date: date });
-    modal.classList.add('hidden');
-    await refresh(el);
-  };
-  const clearBtn = modal.querySelector('#dm-clear');
-  if (clearBtn) clearBtn.onclick = async () => {
-    await patch('/chapters/' + chId + '/progress', { type, scheduled_date: '' });
-    modal.classList.add('hidden');
-    await refresh(el);
-  };
-  modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
 }
 
 async function save(el, existing) {
@@ -210,20 +262,72 @@ function attachEvents(el, chapters) {
     btn.onclick = () => openModal(el, null, btn.dataset.sid);
   });
 
-  // Toggle done
+  // Preview toggle
   el.querySelectorAll('.ch-toggle-btn').forEach(btn => {
     btn.onclick = async () => {
-      await patch('/chapters/' + btn.dataset.id + '/progress', {
-        type: btn.dataset.type,
-        toggle_done: true,
-      });
+      await patch('/chapters/' + btn.dataset.id + '/progress', { type: 'preview', toggle_done: true });
       await refresh(el);
     };
   });
 
-  // Set date
+  // Preview date/notes
   el.querySelectorAll('.ch-date-btn').forEach(btn => {
-    btn.onclick = () => openDateModal(el, btn.dataset.id, btn.dataset.type, btn.dataset.date);
+    btn.onclick = () => {
+      const chId = btn.dataset.id;
+      openDateModal(
+        el,
+        '設定預習進度',
+        btn.dataset.date,
+        btn.dataset.notes,
+        (date, notes) => patch('/chapters/' + chId + '/progress', { type: 'preview', scheduled_date: date, notes }),
+        (notes)       => patch('/chapters/' + chId + '/progress', { type: 'preview', scheduled_date: '', notes })
+      );
+    };
+  });
+
+  // Review toggle
+  el.querySelectorAll('.rev-toggle-btn').forEach(btn => {
+    btn.onclick = async () => {
+      await patch('/chapters/progress/' + btn.dataset.pid, { toggle_done: true });
+      await refresh(el);
+    };
+  });
+
+  // Review date/notes
+  el.querySelectorAll('.rev-date-btn').forEach(btn => {
+    btn.onclick = () => {
+      const pid = btn.dataset.pid;
+      const seq = btn.dataset.seq;
+      openDateModal(
+        el,
+        `設定第${seq}次複習進度`,
+        btn.dataset.date,
+        btn.dataset.notes,
+        (date, notes) => patch('/chapters/progress/' + pid, { scheduled_date: date, notes }),
+        (notes)       => patch('/chapters/progress/' + pid, { scheduled_date: '', notes })
+      );
+    };
+  });
+
+  // Delete review session
+  el.querySelectorAll('.rev-del-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('確定刪除此次複習記錄？')) return;
+      await del('/chapters/progress/' + btn.dataset.pid);
+      await refresh(el);
+    };
+  });
+
+  // Add review session
+  el.querySelectorAll('.rev-add-btn').forEach(btn => {
+    btn.onclick = async () => {
+      try {
+        await post('/chapters/' + btn.dataset.chId + '/review', {});
+        await refresh(el);
+      } catch (e) {
+        alert('新增失敗：' + e.message);
+      }
+    };
   });
 
   // Delete chapter

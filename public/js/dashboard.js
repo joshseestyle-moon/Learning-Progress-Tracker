@@ -1,25 +1,39 @@
-import { get, escHtml, fmtDate, daysLeft } from './api.js';
+import { get, escHtml, fmtDate, today } from './api.js';
+
+function tomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 export async function render(el) {
-  const [timetable, assignments, exams, chapters] = await Promise.all([
+  const todayStr    = today();
+  const tomorrowStr = tomorrow();
+
+  const [timetable, exams, scheduled, chapters] = await Promise.all([
     get('/timetable'),
-    get('/assignments?upcoming=7'),
     get('/exams?upcoming=5'),
+    get('/chapters/scheduled'),
     get('/chapters'),
   ]);
 
-  const todayIdx = (new Date().getDay() + 6) % 7; // 0=Mon
-  const todaySlots = timetable.filter(s => s.day_of_week === todayIdx)
-    .sort((a, b) => a.period - b.period);
-
-  // Chapter progress summary per subject
-  const subjectMap = {};
+  const progressMap = {};
   for (const c of chapters) {
-    if (!subjectMap[c.subject_id]) subjectMap[c.subject_id] = { name: c.subject_name, color: c.subject_color, done: 0, total: 0 };
-    subjectMap[c.subject_id].total++;
-    if (c.is_done) subjectMap[c.subject_id].done++;
+    if (!progressMap[c.subject_id]) progressMap[c.subject_id] = { total: 0, prevDone: 0, revDone: 0 };
+    const p = progressMap[c.subject_id];
+    p.total++;
+    if (c.preview_done) p.prevDone++;
+    if ((c.reviews || []).some(r => r.is_done)) p.revDone++;
   }
-  const subjectProgress = Object.values(subjectMap).filter(s => s.total > 0);
+
+  const todayIdx    = (new Date().getDay() + 6) % 7;
+  const tomorrowIdx = (todayIdx + 1) % 7;
+
+  const todaySlots    = timetable.filter(s => s.day_of_week === todayIdx).sort((a, b) => a.period - b.period);
+  const tomorrowSlots = timetable.filter(s => s.day_of_week === tomorrowIdx).sort((a, b) => a.period - b.period);
+
+  const todayProgress    = scheduled.filter(p => p.scheduled_date === todayStr);
+  const tomorrowProgress = scheduled.filter(p => p.scheduled_date === tomorrowStr);
 
   el.innerHTML = `
     <div class="dashboard-grid">
@@ -27,29 +41,25 @@ export async function render(el) {
       <!-- Today's timetable -->
       <div class="card">
         <div class="card-title">📅 今日課表</div>
-        ${todaySlots.length ? todaySlots.map(s => `
-          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem;">
-            <span style="font-size:.78rem;color:var(--text2);min-width:50px;">第${s.period}節</span>
-            <span class="badge" style="background:${s.subject_color}">${escHtml(s.subject_name)}</span>
-          </div>`).join('') :
-          '<div class="text-muted text-sm">今天沒有課程</div>'}
+        ${timetableCard(todaySlots, '今天沒有課程')}
       </div>
 
-      <!-- Upcoming assignments -->
+      <!-- Tomorrow's timetable -->
       <div class="card">
-        <div class="card-title">📝 即將到期作業</div>
-        ${assignments.length ? assignments.map(a => {
-          const d = daysLeft(a.due_date);
-          const urgency = d <= 1 ? 'urgent' : d <= 3 ? 'soon' : 'ok';
-          return `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
-            <div>
-              <span class="badge" style="background:${a.subject_color};margin-right:.4rem">${escHtml(a.subject_name)}</span>
-              <span style="font-size:.9rem">${escHtml(a.title)}</span>
-            </div>
-            <span class="countdown-pill ${urgency}">${d <= 0 ? '今天！' : d === 1 ? '明天' : d + ' 天'}</span>
-          </div>`;
-        }).join('') : '<div class="text-muted text-sm">近 7 天內沒有作業</div>'}
+        <div class="card-title">📅 明日課表</div>
+        ${timetableCard(tomorrowSlots, '明天沒有課程')}
+      </div>
+
+      <!-- Today's study progress -->
+      <div class="card">
+        <div class="card-title">📚 今日讀書進度</div>
+        ${studyCard(todayProgress, '今日沒有排定的讀書計畫')}
+      </div>
+
+      <!-- Tomorrow's study progress -->
+      <div class="card">
+        <div class="card-title">📚 明日讀書進度</div>
+        ${studyCard(tomorrowProgress, '明日沒有排定的讀書計畫')}
       </div>
 
       <!-- Exam countdown -->
@@ -58,7 +68,29 @@ export async function render(el) {
         ${exams.length ? exams.map(e => {
           const d = e.days_left;
           const urgency = d <= 3 ? 'urgent' : d <= 7 ? 'soon' : 'ok';
-          const typeLabel = {quiz:'小考',midterm:'期中',final:'期末',mock:'模考'}[e.exam_type] || e.exam_type;
+          const typeLabel = { quiz:'小考', segment:'段考', midterm:'期中考', final:'期末考', mock:'模擬考' }[e.exam_type] || e.exam_type;
+          const prog = progressMap[e.subject_id];
+          const progressBar = prog && prog.total > 0 ? (() => {
+            const prevPct = Math.round(prog.prevDone / prog.total * 100);
+            const revPct  = Math.round(prog.revDone  / prog.total * 100);
+            return `
+            <div style="margin-top:.45rem;display:flex;flex-direction:column;gap:4px;">
+              <div style="display:flex;align-items:center;gap:.5rem;">
+                <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">預習</span>
+                <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
+                  <div style="height:100%;width:${prevPct}%;background:var(--accent);border-radius:999px;"></div>
+                </div>
+                <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.prevDone}/${prog.total}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:.5rem;">
+                <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">複習</span>
+                <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
+                  <div style="height:100%;width:${revPct}%;background:var(--success);border-radius:999px;"></div>
+                </div>
+                <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.revDone}/${prog.total}</span>
+              </div>
+            </div>`;
+          })() : '';
           return `
           <div style="margin-bottom:.75rem;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -69,30 +101,44 @@ export async function render(el) {
               <span class="countdown-pill ${urgency}">${d <= 0 ? '今天！' : d + ' 天後'}</span>
             </div>
             <div style="font-size:.85rem;margin-top:.25rem;color:var(--text2);">${escHtml(e.title)} · ${fmtDate(e.exam_date)}</div>
+            ${progressBar}
           </div>`;
         }).join('') : '<div class="text-muted text-sm">近期沒有考試</div>'}
       </div>
 
-      <!-- Reading progress -->
-      <div class="card">
-        <div class="card-title">📖 讀書進度總覽</div>
-        ${subjectProgress.length ? subjectProgress.map(s => {
-          const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
-          return `
-          <div style="margin-bottom:.85rem;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:.3rem;">
-              <span style="font-size:.88rem;font-weight:600;">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color};margin-right:.4rem;"></span>
-                ${escHtml(s.name)}
-              </span>
-              <span class="text-xs text-muted">${s.done}/${s.total} (${pct}%)</span>
-            </div>
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" style="width:${pct}%;background:${s.color}"></div>
-            </div>
-          </div>`;
-        }).join('') : '<div class="text-muted text-sm">尚未設定章節</div>'}
-      </div>
-
     </div>`;
+}
+
+function timetableCard(slots, emptyMsg) {
+  if (!slots.length) return `<div class="text-muted text-sm">${emptyMsg}</div>`;
+  return slots.map(s => `
+    <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem;">
+      <span style="font-size:.78rem;color:var(--text2);min-width:50px;">第${s.period}節</span>
+      <span class="badge" style="background:${s.subject_color}">${escHtml(s.subject_name)}</span>
+    </div>`).join('');
+}
+
+function studyCard(items, emptyMsg) {
+  if (!items.length) return `<div class="text-muted text-sm">${emptyMsg}</div>`;
+  return items.map(p => {
+    const isPreview = p.type === 'preview';
+    const typeLabel = isPreview ? '預習' : '複習';
+    const color     = isPreview ? 'var(--accent)' : 'var(--success)';
+    return `
+    <div style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
+      <span style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;border-radius:50%;
+                   border:2px solid ${color};background:${p.is_done ? color : 'transparent'};
+                   display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;">
+        ${p.is_done ? '✓' : ''}
+      </span>
+      <div style="min-width:0;">
+        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+          <span class="badge" style="background:${p.subject_color}">${escHtml(p.subject_name)}</span>
+          <span style="font-size:.85rem;font-weight:600;${p.is_done ? 'text-decoration:line-through;color:var(--text3);' : ''}">${escHtml(p.chapter_title)}</span>
+          <span style="font-size:.7rem;padding:.1rem .4rem;border-radius:999px;border:1.5px solid ${color};color:${color};">${typeLabel}</span>
+        </div>
+        ${p.notes ? `<div style="font-size:.75rem;color:var(--text2);margin-top:.2rem;">📝 ${escHtml(p.notes)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 }

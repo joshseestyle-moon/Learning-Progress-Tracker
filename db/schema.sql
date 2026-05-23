@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS subjects (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
     color      TEXT NOT NULL DEFAULT '#4a90d9',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -66,10 +67,12 @@ CREATE TABLE IF NOT EXISTS chapter_progress (
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     chapter_id     INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     type           TEXT NOT NULL DEFAULT 'preview' CHECK(type IN ('preview','review')),
+    seq            INTEGER NOT NULL DEFAULT 1,
     scheduled_date TEXT,
     is_done        INTEGER NOT NULL DEFAULT 0,
     done_at        TEXT,
-    UNIQUE(user_id, chapter_id, type)
+    notes          TEXT,
+    UNIQUE(user_id, chapter_id, type, seq)
 );
 
 CREATE TABLE IF NOT EXISTS study_log (

@@ -2,6 +2,9 @@
 data/*.db
 data/*.db-shm
 data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
 
 # 相依套件
 node_modules/

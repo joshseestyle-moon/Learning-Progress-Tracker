@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：1.1　　最後更新：2026-05-23  
+> 版本：1.5　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -110,16 +110,24 @@ router.js
 
 ### 連線管理
 
-`db/db.js` 匯出單一 `better-sqlite3` 連線實例，整個 Node.js 進程共用：
+`db/db.js` 匯出一個 **wrapper 物件**（非 Database 實例本身），整個 Node.js 進程共用：
 
 ```js
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-module.exports = db;
+let _db = openAndMigrate();   // 實際的 Database 實例
+
+const dbWrapper = {
+  prepare: (sql) => _db.prepare(sql),
+  exec:    (sql) => _db.exec(sql),
+  pragma:  (key) => _db.pragma(key),
+  reinitialize(sourcePath) { /* 熱重載，見下方說明 */ },
+};
+
+module.exports = dbWrapper;
 ```
 
-所有 route 模組 `require('../db/db')` 取得同一物件，**不存在連線池**，因為 `better-sqlite3` 為同步 API，每次呼叫在 JS event loop 中序列執行。
+所有 route 模組 `require('../db/db')` 取得同一個 wrapper 物件。wrapper 的方法委派給當前的 `_db`，因此 `reinitialize()` 更新 `_db` 後，所有 route 的下一次呼叫自動使用新連線，**無需重啟伺服器**。
+
+**不存在連線池**：`better-sqlite3` 為同步 API，每次呼叫在 JS event loop 中序列執行，無競態條件。
 
 ### WAL 模式（Write-Ahead Logging）
 
@@ -180,9 +188,11 @@ middleware/userContext.js  （套用於需要使用者身份的路由）
 | 路由 | 套用 userContext | 說明 |
 |---|---|---|
 | `/api/users` | 否 | 個人選擇頁在登入前使用 |
-| `/api/subjects` | 否 | 科目為全體共用資料 |
-| `/api/chapters` GET/POST/PUT/DELETE | 否（GET 有 userCtx） | 章節定義共用；GET 附帶個人進度需 userId |
+| `/api/subjects` | 是 | 科目為個人資料，需 userId 過濾 |
+| `/api/chapters` GET | 是 | GET 附帶個人進度需 userId |
+| `/api/chapters` POST/PUT/DELETE | 是 | 驗證章節的科目屬於目前使用者 |
 | `/api/chapters/:id/progress` | 是 | 個人進度 |
+| `/api/chapters/progress/:id` | 是 | 個人進度（特定記錄） |
 | `/api/timetable` | 是 | 個人課表 |
 | `/api/assignments` | 是 | 個人作業 |
 | `/api/exams` | 是 | 個人考試 |
@@ -393,7 +403,7 @@ db.prepare('SELECT * FROM assignments WHERE user_id = ? ORDER BY due_date')
 
 | 刪除 | 連帶刪除 |
 |---|---|
-| `users` | timetable_slots、assignments、exams、chapter_progress、study_log、grades |
+| `users` | subjects、timetable_slots、assignments、exams、chapter_progress、study_log、grades |
 | `subjects` | timetable_slots、assignments、exams、chapters（連帶 chapter_progress） |
 | `chapters` | chapter_progress |
 
@@ -420,7 +430,7 @@ db.prepare('SELECT * FROM assignments WHERE user_id = ? ORDER BY due_date')
 | 資料表 | 唯一欄位組合 | 效果 |
 |---|---|---|
 | `timetable_slots` | `(user_id, day_of_week, period, school_year, semester)` | 同學期同節次不可重複排課 |
-| `chapter_progress` | `(user_id, chapter_id, type)` | 每人每章節的預習/複習各只有一筆進度 |
+| `chapter_progress` | `(user_id, chapter_id, type, seq)` | 每人每章節的每筆預習/複習記錄不重複（允許多筆複習） |
 
 ---
 
@@ -580,7 +590,7 @@ CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 5 個遷移
+### 已實作的 8 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -648,6 +658,113 @@ if (!ttCols2.includes('school_year')) { /* rebuild with school_year + semester *
 > 舊課表資料保留，自動歸入 114學年度第2學期（DEFAULT 值）。  
 > 前端年份選單範圍固定為民國 114–120 學年度。
 
+#### Migration 6：章節進度新增 `notes` 備註欄位
+
+**觸發條件**：`chapter_progress` 缺少 `notes` 欄位
+
+**處理方式**：`ALTER TABLE ADD COLUMN`（可為 NULL 的欄位，SQLite 原生支援）
+
+```js
+const cpCols2 = db.pragma('table_info(chapter_progress)').map(c => c.name);
+if (!cpCols2.includes('notes')) {
+  db.exec('ALTER TABLE chapter_progress ADD COLUMN notes TEXT');
+}
+```
+
+> 使用者可在預習或每次複習記錄上填寫備註（學習狀況、重點、待補內容等）。
+
+#### Migration 7：章節進度新增 `seq` 欄位，支援多次複習
+
+**觸發條件**：`chapter_progress` 缺少 `seq` 欄位
+
+**處理方式**：CREATE new → INSERT（所有現有記錄 seq 設為 1）→ DROP → RENAME，UNIQUE 約束由 `(user_id, chapter_id, type)` 更新為 `(user_id, chapter_id, type, seq)`
+
+```js
+const cpCols3 = db.pragma('table_info(chapter_progress)').map(c => c.name);
+if (!cpCols3.includes('seq')) {
+  db.exec(`
+    CREATE TABLE chapter_progress_v3 (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      chapter_id     INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+      type           TEXT NOT NULL DEFAULT 'preview' CHECK(type IN ('preview','review')),
+      seq            INTEGER NOT NULL DEFAULT 1,
+      scheduled_date TEXT,
+      is_done        INTEGER NOT NULL DEFAULT 0,
+      done_at        TEXT,
+      notes          TEXT,
+      UNIQUE(user_id, chapter_id, type, seq)
+    );
+    INSERT INTO chapter_progress_v3 (id, user_id, chapter_id, type, seq, scheduled_date, is_done, done_at, notes)
+      SELECT id, user_id, chapter_id, type, 1, scheduled_date, is_done, done_at, notes FROM chapter_progress;
+    DROP TABLE chapter_progress;
+    ALTER TABLE chapter_progress_v3 RENAME TO chapter_progress;
+  `);
+}
+```
+
+> 遷移後每筆舊記錄 seq=1，行為與舊版完全相同。新增複習時 seq 自動遞增（`MAX(seq)+1`）。  
+> 注意：Migration 6（ADD COLUMN notes）需在本遷移前執行，否則 INSERT SELECT 中的 `notes` 欄位不存在。
+
+#### Migration 8：科目新增 `user_id`，從全體共用改為每人獨立
+
+**觸發條件**：`subjects` 缺少 `user_id` 欄位
+
+**處理方式**：CREATE new → INSERT（現有科目歸入第一個使用者）→ DROP → RENAME，並加 FK `ON DELETE CASCADE`
+
+```js
+const subCols = db.pragma('table_info(subjects)').map(c => c.name);
+if (!subCols.includes('user_id')) {
+  const firstUser = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get();
+  const defaultUserId = firstUser ? firstUser.id : 1;
+  db.exec(`
+    CREATE TABLE subjects_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#4a90d9',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO subjects_new (id, user_id, name, color, created_at)
+      SELECT id, ${defaultUserId}, name, color, created_at FROM subjects;
+    DROP TABLE subjects;
+    ALTER TABLE subjects_new RENAME TO subjects;
+  `);
+}
+// 不論走哪條路徑都確保索引存在（遷移後或全新 DB）
+db.exec('CREATE INDEX IF NOT EXISTS idx_subjects_user ON subjects(user_id)');
+```
+
+> 遷移後各使用者的科目完全獨立：新增、修改、刪除僅影響自己的科目；章節透過 `subject_id → subjects.user_id` 繼承所有權。
+
+---
+
+### 資料庫熱重載（匯入備份）
+
+`reinitialize(sourcePath)` 支援在不重啟伺服器的情況下替換整個資料庫：
+
+```js
+reinitialize(sourcePath) {
+  // 1. 將 WAL 完整寫入主檔，避免遺失資料
+  try { _db.pragma('wal_checkpoint(TRUNCATE)'); } catch (_) {}
+  // 2. 關閉連線
+  try { _db.close(); } catch (_) {}
+  // 3. 刪除舊的 WAL/SHM，避免套用到新資料庫
+  for (const ext of ['-wal', '-shm']) {
+    try { fs.unlinkSync(DB_PATH + ext); } catch (_) {}
+  }
+  // 4. 複製備份檔至 DB_PATH
+  if (sourcePath) fs.copyFileSync(sourcePath, DB_PATH);
+  // 5. 重新開啟並執行 migration
+  _db = openAndMigrate();
+}
+```
+
+**WAL 檔案的重要性**：SQLite WAL 模式下，`app.db-wal` 儲存尚未 checkpoint 的寫入。若還原時不刪除舊 WAL，SQLite 會將舊 WAL 套用至新資料庫，造成資料混亂。
+
+**備份下載亦需 checkpoint**：`GET /api/backup` 下載前執行 `wal_checkpoint(TRUNCATE)`，確保備份的 `.db` 檔已包含所有資料（WAL 已合併至主檔）。
+
+---
+
 ### 新增遷移的方式
 
 在 `db/db.js` 的遷移區段末尾追加：
@@ -697,9 +814,32 @@ if (!xCols.includes('new_column')) {
 | 圖表 | Chart.js CDN | 手寫 Canvas | 功能足夠，若無網路可手動放入 vendor/ |
 | 課表設計 | 節次制（1–10節） | 時間制（HH:MM） | 符合台灣中小學課表慣例 |
 | 課表學年範圍 | 民國 114–120 固定選單 | 動態計算 ± N 年 | 使用情境明確，固定範圍操作更直覺 |
-| 共用資料 | 科目與章節共用 | 各自獨立 | 同班學生讀同樣的課程，定義共用才合理 |
+| 共用資料 | 科目與章節各自獨立 | 全體共用 | 實際需求為各帳號資料完全獨立，科目以 user_id 區隔 |
 | 可攜版方案 | 內嵌 Node.js portable + bat | pkg 單一 exe | better-sqlite3 為 native addon，portable Node 方案相容性更佳 |
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態。*
+### 跨頁面共用的 progressMap 模式
+
+`exams.js` 與 `dashboard.js` 的考試倒數區塊都需要顯示科目讀書進度，兩者採用相同的計算邏輯：
+
+```js
+// 在 refresh() 中與其他 API 並行拉取
+const chapters = await get('/chapters');  // 或 Promise.all 中一併取得
+
+// 以 subject_id 為 key 建立進度 map
+const progressMap = {};
+for (const c of chapters) {
+  if (!progressMap[c.subject_id]) progressMap[c.subject_id] = { total: 0, prevDone: 0, revDone: 0 };
+  const p = progressMap[c.subject_id];
+  p.total++;
+  if (c.preview_done) p.prevDone++;
+  if ((c.reviews || []).some(r => r.is_done)) p.revDone++;
+}
+```
+
+渲染時以 `progressMap[e.subject_id]` 取出對應科目的進度，若 `total === 0`（科目無章節）則不顯示進度條。此模式為純客戶端計算，不需新增 API 端點。
+
+---
+
+*本文件反映截至 2026-05-23 的實作狀態（v1.5）。*

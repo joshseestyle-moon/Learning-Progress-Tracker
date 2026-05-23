@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：1.1　　最後更新：2026-05-23
+> 版本：1.5　　最後更新：2026-05-23
 
 ---
 
@@ -30,7 +30,7 @@
 | 部署方式 | 本機執行（localhost），區網其他裝置可同時連線 |
 | 使用者切換 | 首頁選擇個人檔案，無需輸入密碼 |
 | 資料隔離 | 每位使用者的作業、考試、成績等資料完全獨立 |
-| 共用資料 | 科目、章節定義為全體共用 |
+| 共用資料 | 使用者（帳號列表）為全體共用；科目、章節、進度均各自獨立 |
 | 離線使用 | 核心功能不依賴外部網路（圖表庫需網路或手動下載） |
 
 ---
@@ -211,11 +211,12 @@ subjects ──┬── timetable_slots
 | `is_admin` | INTEGER | 管理員標記（0/1，目前純展示用） |
 | `created_at` | TEXT | 建立時間（ISO 8601） |
 
-#### `subjects` — 科目（全體共用）
+#### `subjects` — 科目（每人各自獨立）
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
 | `id` | INTEGER PK | 自動遞增 |
+| `user_id` | INTEGER FK | 所屬使用者（ON DELETE CASCADE） |
 | `name` | TEXT | 科目名稱 |
 | `color` | TEXT | 代表顏色（CSS hex） |
 
@@ -269,7 +270,7 @@ subjects ──┬── timetable_slots
 | `final` | 期末考 |
 | `mock` | 模擬考 |
 
-#### `chapters` — 章節（全體共用）
+#### `chapters` — 章節（透過 subject_id 繼承所有權，每人各自獨立）
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
@@ -286,11 +287,14 @@ subjects ──┬── timetable_slots
 | `user_id` | INTEGER FK | 使用者 |
 | `chapter_id` | INTEGER FK | 章節 |
 | `type` | TEXT | `preview`（預習）/ `review`（複習） |
+| `seq` | INTEGER | 序號（預習固定為 1；複習可有多筆，從 1 遞增） |
 | `scheduled_date` | TEXT | 排定日期（可為空，顯示於行事曆） |
 | `is_done` | INTEGER | 是否完成（0/1） |
 | `done_at` | TEXT | 完成時間 |
+| `notes` | TEXT | 備註（學習狀況、重點、待補內容等，可為空） |
 
-- 唯一約束：`(user_id, chapter_id, type)`
+- 唯一約束：`(user_id, chapter_id, type, seq)`
+- 每個章節可有一筆預習（seq=1）與多筆複習（seq=1,2,3…）進度記錄
 
 #### `study_log` — 讀書時間記錄
 
@@ -351,14 +355,14 @@ subjects ──┬── timetable_slots
 
 ---
 
-### 科目 `/api/subjects`
+### 科目 `/api/subjects`（需 X-User-Id）
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/subjects` | 取得所有科目 |
-| POST | `/api/subjects` | 新增科目 |
-| PUT | `/api/subjects/:id` | 修改科目名稱或顏色 |
-| DELETE | `/api/subjects/:id` | 刪除科目（連帶刪除相關章節） |
+| GET | `/api/subjects` | 取得目前使用者的科目列表 |
+| POST | `/api/subjects` | 新增科目（歸屬於目前使用者） |
+| PUT | `/api/subjects/:id` | 修改科目名稱或顏色（僅限本人） |
+| DELETE | `/api/subjects/:id` | 刪除科目（連帶刪除相關章節，僅限本人） |
 
 ---
 
@@ -419,20 +423,36 @@ subjects ──┬── timetable_slots
 | POST | `/api/chapters` | 新增章節 |
 | PUT | `/api/chapters/:id` | 修改章節名稱或排序 |
 | DELETE | `/api/chapters/:id` | 刪除章節 |
-| PATCH | `/api/chapters/:id/progress` | 切換預習/複習完成狀態或設定日期（需 X-User-Id） |
+| PATCH | `/api/chapters/:id/progress` | Upsert 預習進度（seq=1），設定日期/備註/完成狀態（需 X-User-Id） |
+| POST | `/api/chapters/:id/review` | 為章節新增一筆複習進度（seq 自動遞增，需 X-User-Id） |
+| PATCH | `/api/chapters/progress/:progressId` | 更新指定進度記錄的日期/備註/完成狀態（需 X-User-Id） |
+| DELETE | `/api/chapters/progress/:progressId` | 刪除指定複習進度記錄（預習不可刪除，需 X-User-Id） |
 
 **PATCH `/api/chapters/:id/progress` 請求體**
 ```json
 {
   "type": "preview",
   "toggle_done": true,
-  "scheduled_date": "2026-06-01"
+  "scheduled_date": "2026-06-01",
+  "notes": "重點在第三節"
 }
 ```
 
-> `type`：`preview`（預習）或 `review`（複習）  
+> `type`：`preview`（預習），此端點固定操作 seq=1 那筆記錄  
 > `toggle_done`：`true` 時切換完成狀態  
-> `scheduled_date`：設定日期；傳空字串 `""` 清除日期
+> `scheduled_date`：設定日期；傳空字串 `""` 清除日期  
+> `notes`：備註文字；傳空字串清除備註
+
+**PATCH `/api/chapters/progress/:progressId` 請求體**
+```json
+{
+  "toggle_done": true,
+  "scheduled_date": "2026-06-15",
+  "notes": "複習第二次，熟悉度約 70%"
+}
+```
+
+> 所有欄位均為選填；未傳入的欄位維持原值
 
 ---
 
@@ -470,13 +490,19 @@ subjects ──┬── timetable_slots
 
 ---
 
-### 備份 `/api/backup`
+### 備份與還原 `/api/backup`
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/backup` | 下載 SQLite 資料庫檔案 |
+| GET | `/api/backup` | 下載 SQLite 資料庫檔案（備份） |
+| POST | `/api/backup` | 上傳備份檔案還原資料（匯入） |
 
-回應為 `application/octet-stream`，檔名格式：`studyapp-backup-YYYY-MM-DD.db`
+**GET** 回應為 `application/octet-stream`，檔名格式：`studyapp-backup-YYYY-MM-DD.db`  
+下載前伺服器自動執行 WAL checkpoint，確保備份完整。
+
+**POST** 請求體為原始二進位（`Content-Type: application/octet-stream`），最大 500 MB  
+伺服器驗證 SQLite magic bytes，驗證通過後熱重載資料庫（不需重啟伺服器）  
+回應：`{ "ok": true }` 或 `{ "error": "錯誤訊息" }`
 
 ---
 
@@ -524,15 +550,17 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - Netflix 卡片風格顯示所有使用者
 - 「✏️ 編輯帳號」進入編輯模式，卡片右上角出現 ✕ 刪除按鈕
 - 「+ 新增使用者」：填入姓名、選擇頭像顏色、可標記管理員
-- 「💾 備份資料」：直接下載資料庫檔案
+- 「💾 備份資料」：WAL checkpoint 後下載完整資料庫檔案
+- 「📂 匯入備份」：選取 `.db` 備份檔上傳，確認警告後還原全部資料（不需重啟伺服器）
 - 「🌙 切換主題」：切換亮色／暗色模式
 - 選擇後將 `userId` 與 `userName` 寫入 `localStorage`，跳轉至 App
 
 #### 今日概覽（#dashboard）
 - **今日課表**：顯示當天節次與科目
-- **即將到期作業**：7 天內到期、未完成的作業，顯示剩餘天數（紅/黃/綠顏色區分緊急程度）
-- **考試倒數**：最近 5 筆未完成考試，顯示剩餘天數
-- **讀書進度總覽**：各科目預習/複習進度條
+- **明日課表**：顯示明天節次與科目
+- **今日讀書進度**：排定日期為今天的預習/複習項目，顯示完成狀態與備註
+- **明日讀書進度**：排定日期為明天的預習/複習項目
+- **考試倒數**：最近 5 筆未完成考試，顯示剩餘天數（紅/黃/綠區分緊急程度），每筆考試下方顯示對應科目的預習/複習章節完成進度條
 
 #### 每週課表（#timetable）
 - 頂部下拉選單選擇學年度（民國 114–120）與學期（第1/第2學期），預設顯示當前學期
@@ -544,19 +572,23 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 #### 行事曆（#calendar）
 - 月曆視圖，顯示當月所有事件
 - 事件來源：作業截止日、考試日期、章節預習/複習排定日
+- 格子內標籤格式：`📖 科目・章節名`（預習）、`✏️ 科目・章節名`（複習）、`⏰ 科目・考試名`、`📝 科目・作業名`；hover 顯示完整名稱
 - 點選日期格可查看當天詳情，並新增作業
 
 #### 考試倒數（#exams）
 - 分「即將到來」與「已完成」兩區塊
 - 每筆顯示：科目、類型標籤、考試名稱、日期、剩餘天數
+- 每筆考試下方顯示對應科目的讀書進度條：預習完成比例（藍）與複習完成比例（綠），格式為 `已完成章節 / 總章節數`；若科目尚無章節則不顯示
 - 可新增、編輯、標記完成、刪除
 
 #### 讀書進度（#chapters）
 - 以科目為群組的折疊表格（Accordion）
-- 每個章節有「預習」與「複習」兩個獨立狀態
-- 可設定預習/複習的排定日期（連動行事曆）
+- 每個章節有「預習」（1次）與「複習」（可多次）的獨立進度
+- 複習次數不限，可透過「+ 新增複習」逐次新增，並可刪除任一複習記錄
+- 預習與每次複習均可設定排定日期（連動行事曆）及備註
+- 按鈕顯示完成狀態（空心虛線=未完成，實心填色=已完成）
 - 顯示該章節累積讀書時間（來自讀書時間記錄）
-- header 顯示各科目的預習/複習完成比例
+- Accordion header 顯示各科目的預習/複習完成比例
 
 #### 讀書時間（#studylog）
 - **手動記錄**：選科目、章節（選填）、日期、分鐘數
@@ -620,16 +652,26 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 2. 點「💾 備份資料」
 3. 瀏覽器自動下載 `studyapp-backup-YYYY-MM-DD.db`
 
-**方法二：直接複製檔案**
+> 伺服器下載前會自動執行 WAL checkpoint，確保備份包含所有資料。
+
+**方法二：直接複製檔案（需停止伺服器）**
 ```
 複製 X:\class\data\app.db 到安全位置
 ```
 
 ### 還原
 
+**方法一：網頁介面（推薦，不需重啟伺服器）**
+1. 前往首頁（個人選擇頁）
+2. 點「📂 匯入備份」
+3. 選取 `.db` 備份檔
+4. 確認警告後自動還原，頁面刷新即可使用
+
+**方法二：手動替換檔案**
 1. 停止伺服器（關閉執行中的 `node server.js`）
-2. 將備份檔案複製至 `X:\class\data\`，並改名為 `app.db`
-3. 重新啟動伺服器
+2. 刪除 `X:\class\data\app.db-wal` 與 `app.db-shm`（若存在）
+3. 將備份檔案複製至 `X:\class\data\`，並改名為 `app.db`
+4. 重新啟動伺服器
 
 ### 重置所有資料
 
@@ -667,4 +709,4 @@ ipconfig
 
 ---
 
-*本文件由系統自動生成，反映截至 2026-05-23 的實作狀態。*
+*本文件反映截至 2026-05-23 的實作狀態（v1.5）。*

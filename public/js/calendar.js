@@ -28,11 +28,10 @@ async function renderMonth(el) {
     }
   }
   for (const s of scheduled) {
-    const typeLabel = s.type === 'preview' ? '預習' : '複習';
     (byDate[s.scheduled_date] = byDate[s.scheduled_date] || []).push({
       ...s,
       _type: 'chapter',
-      title: `${typeLabel}：${s.chapter_title}`,
+      title: `${s.type === 'preview' ? '預習' : '複習'}：${s.chapter_title}`,
     });
   }
 
@@ -56,8 +55,9 @@ async function renderMonth(el) {
       <div class="cal-cell" data-date="${dateStr}">
         <div class="cal-date ${isToday?'today':''}">${d}</div>
         ${events.slice(0,3).map(ev => {
-          const label = ev._type === 'exam' ? '⏰ ' + ev.title : '📝 ' + ev.title;
-          return `<div class="cal-dot" style="background:${ev.subject_color}" title="${escHtml(ev.title)}">${escHtml(label.slice(0,18))}</div>`;
+          const icon  = ev._type === 'exam' ? '⏰' : ev._type === 'chapter' ? (ev.type === 'preview' ? '📖' : '✏️') : '📝';
+          const label = `${icon} ${ev.subject_name}・${ev._type === 'chapter' ? ev.chapter_title : ev.title}`;
+          return `<div class="cal-dot" style="background:${ev.subject_color}" title="${escHtml(label)}">${escHtml(label)}</div>`;
         }).join('')}
         ${events.length > 3 ? `<div class="text-xs text-muted">+${events.length-3} 更多</div>` : ''}
       </div>`;
