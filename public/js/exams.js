@@ -28,7 +28,8 @@ function buildProgressMap(chapters) {
 }
 
 function buildPage(exams, progressMap) {
-  const upcoming = exams.filter(e => !e.is_completed);
+  const upcoming = exams.filter(e => !e.is_completed && e.days_left >= 0);
+  const expired  = exams.filter(e => !e.is_completed && e.days_left < 0);
   const done     = exams.filter(e => e.is_completed);
 
   return `
@@ -42,6 +43,15 @@ function buildPage(exams, progressMap) {
       ${upcoming.length ? upcoming.map(e => examCard(e, progressMap[e.subject_id])).join('') :
         '<div class="text-muted text-sm">沒有即將到來的考試</div>'}
     </div>
+
+    ${expired.length ? `
+    <div class="card" style="margin-bottom:1.25rem;border-left:3px solid var(--danger);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+        <div class="card-title" style="color:var(--danger);margin-bottom:0;">已過期 (${expired.length})</div>
+        <button class="btn btn-danger btn-sm" id="exam-clear-expired-btn">清除已過期</button>
+      </div>
+      ${expired.map(e => examCard(e, progressMap[e.subject_id])).join('')}
+    </div>` : ''}
 
     ${done.length ? `
     <div class="card">
@@ -85,7 +95,7 @@ function examCard(e, prog) {
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap;">
           <span class="badge" style="background:${e.subject_color}">${escHtml(e.subject_name)}</span>
           <span class="chip">${TYPE_LABEL[e.exam_type]||e.exam_type}</span>
-          ${!e.is_completed ? `<span class="countdown-pill ${urgency}">${d <= 0 ? '今天！' : d+'天後'}</span>` : ''}
+          ${!e.is_completed ? `<span class="countdown-pill ${urgency}">${d < 0 ? `已過 ${-d} 天` : d === 0 ? '今天！' : d+'天後'}</span>` : ''}
         </div>
         <div style="font-weight:600;margin-bottom:.15rem;">${escHtml(e.title)}</div>
         <div class="text-xs text-muted">${fmtDate(e.exam_date)}${e.notes?'・'+escHtml(e.notes):''}</div>
@@ -174,6 +184,16 @@ async function deleteExam(el, id) {
 
 function attachEvents(el, exams) {
   el.querySelector('#exam-add-btn').onclick = () => openModal(el, null);
+
+  const clearBtn = el.querySelector('#exam-clear-expired-btn');
+  if (clearBtn) {
+    clearBtn.onclick = async () => {
+      const expired = exams.filter(e => !e.is_completed && e.days_left < 0);
+      if (!confirm(`將 ${expired.length} 筆已過期考試標記為完成？`)) return;
+      await Promise.all(expired.map(e => put('/exams/' + e.id, { is_completed: true })));
+      await refresh(el);
+    };
+  }
   el.querySelectorAll('.exam-edit-btn').forEach(btn => {
     btn.onclick = () => openModal(el, exams.find(e => e.id === +btn.dataset.id));
   });
