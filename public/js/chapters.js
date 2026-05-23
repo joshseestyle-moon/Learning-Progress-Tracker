@@ -63,8 +63,9 @@ function buildPage(chapters, timeMap = {}) {
                 ${grp.items.map(c => chapterRow(c, timeMap[c.id] || 0)).join('')}
               </tbody>
             </table>
-            <div style="padding:.6rem .85rem;border-top:1px solid var(--border);">
+            <div style="padding:.6rem .85rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
               <button class="btn btn-ghost btn-sm inline-add-btn" data-sid="${sid}">+ 新增章節到此科目</button>
+              <button class="btn btn-danger btn-sm del-all-chapters-btn" data-sid="${sid}" data-name="${escHtml(grp.name)}" style="opacity:.6;font-size:.75rem;">🗑 刪除此科目所有章節</button>
             </div>
           </div>
         </div>`;
@@ -335,6 +336,15 @@ function attachEvents(el, chapters) {
     btn.onclick = async () => {
       if (!confirm('確定刪除此章節？')) return;
       await del('/chapters/' + btn.dataset.id);
+      await refresh(el);
+    };
+  });
+
+  // Delete all chapters for a subject
+  el.querySelectorAll('.del-all-chapters-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`確定刪除「${btn.dataset.name}」的所有章節？\n此操作無法復原，相關進度記錄也會一併刪除。`)) return;
+      await del('/chapters?subject_id=' + btn.dataset.sid);
       await refresh(el);
     };
   });

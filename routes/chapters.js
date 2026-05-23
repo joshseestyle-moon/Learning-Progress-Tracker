@@ -104,6 +104,16 @@ router.put('/:id', userCtx, (req, res) => {
   res.json({ ok: true });
 });
 
+// DELETE / — delete all chapters belonging to a subject (query: ?subject_id=X)
+router.delete('/', userCtx, (req, res) => {
+  const { subject_id } = req.query;
+  if (!subject_id) return res.status(400).json({ error: '缺少 subject_id' });
+  const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
+  if (!subject) return res.status(403).json({ error: '科目不存在或無權限' });
+  const { changes } = db.prepare('DELETE FROM chapters WHERE subject_id = ?').run(subject_id);
+  res.json({ ok: true, deleted: changes });
+});
+
 // DELETE /:id — delete chapter
 router.delete('/:id', userCtx, (req, res) => {
   const c = db.prepare(
