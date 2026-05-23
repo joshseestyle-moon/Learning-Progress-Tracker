@@ -7,7 +7,8 @@
 }
 
 .print-page {
-  max-width: 794px; /* A4 @ 96 dpi */
+  width: 210mm;     /* A4 精確寬度 */
+  min-height: 297mm;
   margin: 0 auto;
   padding: 2mm;
   background: #fff;
@@ -116,9 +117,38 @@
 
 /* ── 列印時 ── */
 @media print {
+  @page {
+    size: 210mm 297mm portrait;
+    margin: 2mm;
+  }
+
+  html, body {
+    width: 210mm;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+  }
+
+  /* 隱藏 App UI */
   .sidebar, .topbar, .print-controls { display: none !important; }
-  .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-  body { background: #fff !important; }
-  .print-page { max-width: 100%; }
-  @page { size: A4 portrait; margin: 2mm; }
+
+  .main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+  }
+
+  .print-page {
+    width: 206mm;     /* 210mm − 2mm × 2（@page margin） */
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* 確保色彩正確輸出（科目badge、進度條等） */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
