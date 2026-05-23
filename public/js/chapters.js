@@ -344,8 +344,12 @@ function attachEvents(el, chapters) {
   el.querySelectorAll('.del-all-chapters-btn').forEach(btn => {
     btn.onclick = async () => {
       if (!confirm(`確定刪除「${btn.dataset.name}」的所有章節？\n此操作無法復原，相關進度記錄也會一併刪除。`)) return;
-      await del('/chapters?subject_id=' + btn.dataset.sid);
-      await refresh(el);
+      try {
+        await del('/chapters?subject_id=' + btn.dataset.sid);
+        await refresh(el);
+      } catch (e) {
+        alert('刪除失敗：' + e.message);
+      }
     };
   });
 }
