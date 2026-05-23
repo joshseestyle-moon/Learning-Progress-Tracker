@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.0　　最後更新：2026-05-23  
+> 版本：2.1　　最後更新：2026-05-23  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -400,12 +400,28 @@ params.push(limit.toISOString().slice(0, 10));
 
 ### 資源所有權驗證
 
-POST assignments 與 POST exams 在 INSERT 前先驗證 `subject_id` 屬於當前使用者，防止跨使用者資料關聯：
+所有寫入資源（chapters 除外，已由科目 JOIN 驗證）的 POST 路由在 INSERT 前都驗證 `subject_id` 屬於當前使用者：
 
 ```js
 const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?')
                   .get(subject_id, req.userId);
 if (!subject) return res.status(403).json({ error: '科目不存在' });
+```
+
+套用此驗證的路由：`POST /assignments`、`POST /exams`、`POST /grades`、`POST /studylog`、`POST /timetable`
+
+### GET /chapters 跨使用者資料隔離修正
+
+`GET /api/chapters` 原本遺漏 `WHERE s.user_id = ?`，導致所有帳號的章節都被回傳（章節進度因 LEFT JOIN user_id 看似正常，實際章節清單全混在一起）。修正後加上 `WHERE s.user_id = ?`，參數傳入兩次（LEFT JOIN 與 WHERE 各一）：
+
+```js
+db.prepare(`
+  ...
+  FROM chapters c
+  JOIN subjects s ON s.id = c.subject_id
+  LEFT JOIN chapter_progress prev ON prev.chapter_id = c.id AND prev.user_id = ? ...
+  WHERE s.user_id = ?          ← 修正前遺漏此行
+`).all(req.userId, req.userId);  ← 兩個參數
 ```
 
 ### CSRF 考量
@@ -1347,4 +1363,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v2.0）。*
+*本文件反映截至 2026-05-23 的實作狀態（v2.1）。*
