@@ -22,6 +22,7 @@
 13. [資料驗證層次](#13-資料驗證層次)
 14. [資料庫遷移機制](#14-資料庫遷移機制)
 15. [瀏覽器相容性](#15-瀏覽器相容性)
+16. [資料庫完整結構參考](#16-資料庫完整結構參考)
 
 ---
 
@@ -882,6 +883,335 @@ for (const c of chapters) {
 ```
 
 渲染時以 `progressMap[e.subject_id]` 取出對應科目的進度，若 `total === 0`（科目無章節）則不顯示進度條。此模式為純客戶端計算，不需新增 API 端點。
+
+---
+
+---
+
+## 16. 資料庫完整結構參考
+
+> 原始定義：`db/schema.sql`（全新安裝時執行）；欄位變更透過 `db/db.js` 的 Migration 自動套用。
+
+---
+
+### 資料表關聯圖（ER）
+
+```
+users
+ ├─── subjects           (user_id → users.id CASCADE)
+ │     └─── chapters     (subject_id → subjects.id CASCADE)
+ │           └─── chapter_progress (chapter_id → chapters.id CASCADE)
+ │                        (user_id   → users.id   CASCADE)
+ ├─── timetable_slots    (user_id → users.id CASCADE)
+ │     └── [subject_id]  → subjects.id CASCADE
+ ├─── assignments        (user_id    → users.id    CASCADE)
+ │     └── [subject_id]  → subjects.id CASCADE
+ ├─── exams              (user_id    → users.id    CASCADE)
+ │     └── [subject_id]  → subjects.id CASCADE
+ ├─── study_log          (user_id    → users.id    CASCADE)
+ │     ├── [subject_id]  → subjects.id CASCADE
+ │     └── [chapter_id]  → chapters.id SET NULL
+ └─── grades             (user_id    → users.id    CASCADE)
+       ├── [subject_id]  → subjects.id CASCADE
+       └── [exam_id]     → exams.id   SET NULL
+```
+
+`[]` 表示 NOT NULL FK；`[x]` 表示可為 NULL 的 FK。
+
+---
+
+### 資料表：`users`
+
+```sql
+CREATE TABLE users (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    avatar_color TEXT    NOT NULL DEFAULT '#6c8ebf',
+    is_admin     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `id` | INTEGER PK | — | 自動遞增，供其他表 FK 引用 |
+| `name` | TEXT | — | 顯示於個人選擇頁與側邊欄 |
+| `avatar_color` | TEXT | `#6c8ebf` | 頭像背景色（CSS hex），建立時可自選 |
+| `is_admin` | INTEGER | `0` | 管理員標記（0/1），目前僅作展示用，無功能差異 |
+| `created_at` | TEXT | `datetime('now')` | UTC ISO-8601，SQLite 原生格式 |
+
+**刪除行為**：刪除 user 會 CASCADE 刪除其所有個人資料（subjects、timetable_slots、assignments、exams、chapter_progress、study_log、grades）。
+
+---
+
+### 資料表：`subjects`
+
+```sql
+CREATE TABLE subjects (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    color      TEXT    NOT NULL DEFAULT '#4a90d9',
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_subjects_user ON subjects(user_id);
+```
+
+| 欄位 | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `id` | INTEGER PK | — | — |
+| `user_id` | INTEGER FK | — | 所屬使用者；每人科目完全獨立（Migration 8 加入） |
+| `name` | TEXT | — | 科目名稱，如「數學」、「英文」 |
+| `color` | TEXT | `#4a90d9` | 代表色，用於課表、考試、行事曆色票 |
+| `created_at` | TEXT | `datetime('now')` | — |
+
+**刪除行為**：刪除科目會 CASCADE 刪除相關的 timetable_slots、assignments、exams、chapters（及 chapter_progress）。
+
+---
+
+### 資料表：`timetable_slots`
+
+```sql
+CREATE TABLE timetable_slots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id)     ON DELETE CASCADE,
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id)  ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    period      INTEGER NOT NULL CHECK (period BETWEEN 1 AND 10),
+    school_year INTEGER NOT NULL DEFAULT 114,
+    semester    INTEGER NOT NULL DEFAULT 2 CHECK (semester IN (1, 2)),
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, day_of_week, period, school_year, semester)
+);
+CREATE INDEX idx_timetable_user ON timetable_slots(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `user_id` | FK | 所屬使用者 |
+| `subject_id` | FK | 該節次的科目 |
+| `day_of_week` | INTEGER | 0=週一，1=週二，…，6=週日 |
+| `period` | INTEGER | 節次 1–10 |
+| `school_year` | INTEGER | 民國學年度（114–120），前端選單固定此範圍 |
+| `semester` | INTEGER | 1=上學期，2=下學期 |
+
+**UNIQUE 約束**：同一使用者在同學期同節次只能有一筆課程，重複新增回傳 409。  
+**前端邏輯**：依 `day_of_week BETWEEN 0 AND 4`（週一–週五）為主；若有週六/日資料亦顯示。
+
+---
+
+### 資料表：`assignments`
+
+```sql
+CREATE TABLE assignments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    title       TEXT    NOT NULL,
+    description TEXT,
+    due_date    TEXT    NOT NULL,
+    is_done     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_assignments_user_due ON assignments(user_id, due_date);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `title` | TEXT | 作業名稱 |
+| `description` | TEXT | 說明（可為空） |
+| `due_date` | TEXT | 截止日期（YYYY-MM-DD） |
+| `is_done` | INTEGER | 0=未完成，1=已完成 |
+| `updated_at` | TEXT | PUT 時由 route handler 手動更新為 `datetime('now')` |
+
+**索引用途**：`(user_id, due_date)` 支援「近 N 天到期」篩選（`?upcoming=N`）。
+
+---
+
+### 資料表：`exams`
+
+```sql
+CREATE TABLE exams (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    subject_id   INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    title        TEXT    NOT NULL,
+    exam_date    TEXT    NOT NULL,
+    exam_type    TEXT    NOT NULL DEFAULT 'quiz'
+                 CHECK (exam_type IN ('quiz','segment','midterm','final','mock')),
+    is_completed INTEGER NOT NULL DEFAULT 0,
+    notes        TEXT,
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_exams_user_date ON exams(user_id, exam_date);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `exam_date` | TEXT | 考試日期（YYYY-MM-DD） |
+| `exam_type` | TEXT | 五種考試類型（見下表） |
+| `is_completed` | INTEGER | 0=即將到來，1=已完成 |
+| `notes` | TEXT | 備註（可為空） |
+
+**`exam_type` 對照**：
+
+| 值 | 顯示 |
+|---|---|
+| `quiz` | 小考 |
+| `segment` | 段考 |
+| `midterm` | 期中考 |
+| `final` | 期末考 |
+| `mock` | 模擬考 |
+
+**API 衍生欄位**：GET 回應中額外計算 `days_left`（`exam_date` 距今天數，負值表示已過）與 `subject_name`、`subject_color`（JOIN subjects）。  
+**刪除行為**：刪除考試後 `grades.exam_id` SET NULL（成績記錄保留）。
+
+---
+
+### 資料表：`chapters`
+
+```sql
+CREATE TABLE chapters (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    title      TEXT    NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `subject_id` | FK | 所屬科目；章節透過此 FK 繼承 `user_id`（subjects.user_id） |
+| `title` | TEXT | 章節名稱，如「第一章 代數」 |
+| `sort_order` | INTEGER | 排序權重，數字越小越靠前；前端上移/下移互換相鄰值 |
+
+**無 `user_id`**：章節所有權從 `subjects.user_id` 繼承，後端 POST/PUT/DELETE 透過 JOIN subjects 驗證操作者是否為章節所有者。
+
+---
+
+### 資料表：`chapter_progress`
+
+```sql
+CREATE TABLE chapter_progress (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL REFERENCES users(id)     ON DELETE CASCADE,
+    chapter_id     INTEGER NOT NULL REFERENCES chapters(id)  ON DELETE CASCADE,
+    type           TEXT    NOT NULL DEFAULT 'preview'
+                   CHECK(type IN ('preview','review')),
+    seq            INTEGER NOT NULL DEFAULT 1,
+    scheduled_date TEXT,
+    is_done        INTEGER NOT NULL DEFAULT 0,
+    done_at        TEXT,
+    notes          TEXT,
+    UNIQUE(user_id, chapter_id, type, seq)
+);
+CREATE INDEX idx_chapter_progress_user ON chapter_progress(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `user_id` | FK | 所屬使用者 |
+| `chapter_id` | FK | 對應章節 |
+| `type` | TEXT | `preview`（預習）或 `review`（複習） |
+| `seq` | INTEGER | 序號：預習固定為 1；複習為 1、2、3…（每次新增 `MAX(seq)+1`） |
+| `scheduled_date` | TEXT | 排定學習日期（可為空），連動行事曆顯示 |
+| `is_done` | INTEGER | 0=未完成，1=已完成 |
+| `done_at` | TEXT | 完成時間（toggle 為完成時記錄） |
+| `notes` | TEXT | 學習備註（可為空），顯示於讀書進度與列印頁 |
+
+**UNIQUE 約束**：`(user_id, chapter_id, type, seq)` — 同一使用者同一章節的預習只有一筆（seq 固定=1），複習可有多筆（seq 遞增）。  
+**API 操作**：
+- 預習：`PATCH /chapters/:id/progress`（upsert，type=preview，seq=1）
+- 新增複習：`POST /chapters/:id/review`（INSERT，seq=MAX+1）
+- 更新任意進度：`PATCH /chapters/progress/:progressId`
+- 刪除複習：`DELETE /chapters/progress/:progressId`（預習不可刪）
+
+---
+
+### 資料表：`study_log`
+
+```sql
+CREATE TABLE study_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    log_date   TEXT    NOT NULL,
+    minutes    INTEGER NOT NULL CHECK (minutes > 0),
+    note       TEXT,
+    chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_study_log_user_date ON study_log(user_id, log_date);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `log_date` | TEXT | 記錄日期（YYYY-MM-DD），可手動指定或由碼錶計時自動填入當天 |
+| `minutes` | INTEGER | 讀書分鐘數，CHECK `> 0` |
+| `note` | TEXT | 備註（可為空） |
+| `chapter_id` | FK（可NULL） | 關聯章節（選填）；章節刪除後 SET NULL，記錄保留 |
+
+**API 衍生查詢**：
+- `GET /studylog/weekly`：GROUP BY `subject_id, log_date`，回傳近 7 天各科每日分鐘數，供 Chart.js 堆疊柱狀圖使用
+- `GET /studylog/by-chapter`：GROUP BY `chapter_id`，回傳各章節累積時數，顯示於讀書進度頁
+
+---
+
+### 資料表：`grades`
+
+```sql
+CREATE TABLE grades (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    exam_id    INTEGER REFERENCES exams(id) ON DELETE SET NULL,
+    exam_name  TEXT    NOT NULL,
+    exam_date  TEXT    NOT NULL,
+    score      REAL    NOT NULL,
+    max_score  REAL    NOT NULL DEFAULT 100,
+    notes      TEXT,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `exam_id` | FK（可NULL） | 可關聯考試記錄；考試刪除後 SET NULL，成績保留 |
+| `exam_name` | TEXT | 冗餘欄位，避免關聯考試刪除後名稱消失 |
+| `score` | REAL | 得分（支援小數） |
+| `max_score` | REAL | 滿分，預設 100；前端計算百分比：`round(score/max_score*100)` |
+
+**API 衍生欄位**：GET 回應中附上 `subject_name`、`subject_color`（JOIN subjects）與 `percentage`（計算值）。
+
+---
+
+### 索引總表
+
+| 索引名稱 | 資料表 | 欄位 | 用途 |
+|---|---|---|---|
+| `idx_subjects_user` | `subjects` | `(user_id)` | 篩選使用者科目列表 |
+| `idx_timetable_user` | `timetable_slots` | `(user_id)` | 篩選使用者課表 |
+| `idx_assignments_user_due` | `assignments` | `(user_id, due_date)` | 近 N 天到期作業查詢 |
+| `idx_exams_user_date` | `exams` | `(user_id, exam_date)` | 考試倒數排序查詢 |
+| `idx_study_log_user_date` | `study_log` | `(user_id, log_date)` | 日期範圍讀書時間查詢 |
+| `idx_grades_user_subject` | `grades` | `(user_id, subject_id)` | 依科目篩選成績 |
+| `idx_chapter_progress_user` | `chapter_progress` | `(user_id)` | 讀書進度查詢（JOIN chapters） |
+
+---
+
+### FK 刪除行為彙整
+
+| 刪除目標 | 受影響欄位 | 行為 |
+|---|---|---|
+| `users` | 所有含 `user_id` 的表 | CASCADE（連帶刪除全部個人資料） |
+| `subjects` | `timetable_slots.subject_id`、`assignments.subject_id`、`exams.subject_id`、`chapters.subject_id`、`study_log.subject_id` | CASCADE |
+| `chapters` | `chapter_progress.chapter_id` | CASCADE |
+| `chapters` | `study_log.chapter_id` | SET NULL（記錄保留，chapter_id 清空） |
+| `exams` | `grades.exam_id` | SET NULL（成績保留，exam_id 清空） |
 
 ---
 
