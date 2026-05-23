@@ -7,8 +7,8 @@
 }
 
 .print-page {
-  width: 210mm;     /* A4 精確寬度 */
-  min-height: 297mm;
+  width: 297mm;     /* A4 橫式寬度 */
+  min-height: 210mm;
   margin: 0 auto;
   padding: 2mm;
   background: #fff;
@@ -118,12 +118,12 @@
 /* ── 列印時 ── */
 @media print {
   @page {
-    size: 210mm 297mm portrait;
+    size: 297mm 210mm landscape;
     margin: 2mm;
   }
 
   html, body {
-    width: 210mm;
+    width: 297mm;
     margin: 0;
     padding: 0;
     background: #fff !important;
@@ -135,11 +135,11 @@
   .main-content {
     margin: 0 !important;
     padding: 0 !important;
-    width: 210mm !important;
+    width: 297mm !important;
   }
 
   .print-page {
-    width: 206mm;     /* 210mm − 2mm × 2（@page margin） */
+    width: 293mm;     /* 297mm − 2mm × 2（@page margin） */
     min-height: auto;
     margin: 0;
     padding: 0;
