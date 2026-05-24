@@ -1,51 +1,72 @@
 @echo off
 chcp 65001 >nul
-title 學習管理系統
+title Learning Manager
 cd /d "%~dp0"
 
 echo.
-echo  ============================
-echo       學習管理系統
-echo  ============================
+echo  ============================================
+echo       Learning Manager  Starting...
+echo  ============================================
 echo.
 
-if not exist "node\node.exe" (
-  echo  [錯誤] 找不到 node\node.exe
-  echo  請先在原機執行「製作可攜版.bat」重新打包。
-  echo.
-  pause
-  exit /b 1
+:: ── 判斷版本：可攜版 or 安裝版 ──────────────────
+if exist "%~dp0node\node.exe" (
+    set "NODE=node\node.exe"
+    set "NPM=node\npm.cmd"
+    echo  [Mode] Portable
+) else (
+    where node >nul 2>&1
+    if errorlevel 1 (
+        echo  [ERROR] Node.js not found.
+        echo  Install from https://nodejs.org
+        echo  or rebuild the portable package first.
+        echo.
+        pause
+        exit /b 1
+    )
+    set "NODE=node"
+    set "NPM=npm"
+    echo  [Mode] Installed
 )
+echo.
 
-if not exist "node_modules\express" (
-  echo  首次執行，安裝相依套件中，請稍候...
-  echo  （需要網路連線，約 1-2 分鐘）
-  echo.
-  node\npm.cmd install
-  if errorlevel 1 (
+:: ── 首次安裝相依套件 ─────────────────────────────
+if not exist "%~dp0node_modules\express" (
+    echo  [SETUP] Installing packages, please wait...
     echo.
-    echo  [錯誤] 安裝失敗，請確認網路連線後重試。
-    pause
-    exit /b 1
-  )
-  echo.
+    "%NPM%" install
+    if errorlevel 1 (
+        echo.
+        echo  [ERROR] Package installation failed.
+        pause
+        exit /b 1
+    )
+    echo.
 )
 
-for /f "delims=" %%i in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1).IPAddress"') do set LAN_IP=%%i
-
-echo  伺服器已啟動
-echo.
-echo  本機連線：http://localhost:3000
-if defined LAN_IP (
-  echo  區網連線：http://%LAN_IP%:3000
+:: ── 取得區網 IP（ipconfig，不使用 PowerShell）────
+set "LAN_IP="
+for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /C:"IPv4"') do (
+    if not defined LAN_IP set "LAN_IP=%%A"
 )
+if defined LAN_IP set "LAN_IP=%LAN_IP: =%"
+
+:: ── 顯示連線資訊 ─────────────────────────────────
+echo  Server started!
 echo.
-echo  關閉此視窗即可停止伺服器。
-echo  ============================
+echo    Local : http://localhost:3000
+if defined LAN_IP echo    LAN   : http://%LAN_IP%:3000
+echo.
+echo    Close this window to stop the server.
+echo  ============================================
 echo.
 
-node\node.exe server.js
+:: ── 2 秒後自動開啟瀏覽器 ─────────────────────────
+start "" /B cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:3000"
+
+:: ── 啟動伺服器 ───────────────────────────────────
+"%NODE%" server.js
 
 echo.
-echo  伺服器已停止。
-pause
+echo  Server stopped. Press any key to close...
+pause >nul
