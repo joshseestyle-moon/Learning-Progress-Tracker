@@ -10,7 +10,8 @@ router.get('/', userCtx, (req, res) => {
   const params = [req.userId];
   if (req.query.upcoming) {
     const n = Math.max(1, Math.min(100, parseInt(req.query.upcoming) || 3));
-    sql += ` AND e.is_completed = 0 AND e.exam_date >= date('now') ORDER BY e.exam_date ASC LIMIT ${n}`;
+    sql += ` AND e.is_completed = 0 AND e.exam_date >= date('now','localtime') ORDER BY e.exam_date ASC LIMIT ?`;
+    params.push(n);
   } else {
     sql += ' ORDER BY e.exam_date ASC';
   }

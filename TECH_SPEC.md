@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.1　　最後更新：2026-05-23  
+> 版本：2.2　　最後更新：2026-05-24  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -642,7 +642,7 @@ CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 8 個遷移
+### 已實作的 9 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -787,6 +787,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_subjects_user ON subjects(user_id)');
 ```
 
 > 遷移後各使用者的科目完全獨立：新增、修改、刪除僅影響自己的科目；章節透過 `subject_id → subjects.user_id` 繼承所有權。
+
+#### Migration 9：成績新增 `class_rank` 班排名欄位
+
+**觸發條件**：`grades` 缺少 `class_rank` 欄位
+
+**處理方式**：`ALTER TABLE ADD COLUMN`（可為 NULL 的 TEXT 欄位，SQLite 原生支援）
+
+```js
+const gradeCols = db.pragma('table_info(grades)').map(c => c.name);
+if (!gradeCols.includes('class_rank')) {
+  db.exec('ALTER TABLE grades ADD COLUMN class_rank TEXT');
+}
+```
+
+> 使用者可在成績表格的班排名欄直接輸入（如 `3` 或 `3/40`），失焦或按 Enter 自動儲存；亦可在新增/編輯表單中填寫。
 
 ---
 
@@ -1321,6 +1336,7 @@ CREATE TABLE grades (
     score      REAL    NOT NULL,
     max_score  REAL    NOT NULL DEFAULT 100,
     notes      TEXT,
+    class_rank TEXT,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
@@ -1331,9 +1347,10 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 | `exam_id` | FK（可NULL） | 可關聯考試記錄；考試刪除後 SET NULL，成績保留 |
 | `exam_name` | TEXT | 冗餘欄位，避免關聯考試刪除後名稱消失 |
 | `score` | REAL | 得分（支援小數） |
-| `max_score` | REAL | 滿分，預設 100；前端計算百分比：`round(score/max_score*100)` |
+| `max_score` | REAL | 滿分，預設 100；前端折線圖計算百分比：`round(score/max_score*100)` |
+| `class_rank` | TEXT | 班排名（選填，如 `3` 或 `3/40`）；Migration 9 加入 |
 
-**API 衍生欄位**：GET 回應中附上 `subject_name`、`subject_color`（JOIN subjects）與 `percentage`（計算值）。
+**API 衍生欄位**：GET 回應中附上 `subject_name`、`subject_color`（JOIN subjects）。
 
 ---
 
@@ -1363,4 +1380,4 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
-*本文件反映截至 2026-05-23 的實作狀態（v2.1）。*
+*本文件反映截至 2026-05-24 的實作狀態（v2.2）。*
