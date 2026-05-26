@@ -8,6 +8,7 @@ import { render as renderGrades }    from './grades.js';
 import { render as renderSubjects }  from './subjects.js';
 import { render as renderPrint }     from './print.js';
 import { render as renderBadges }    from './badges.js';
+import { render as renderShop }      from './shop.js';
 
 const routes = {
   dashboard: { title: '今日概覽',   fn: renderDashboard },
@@ -18,6 +19,7 @@ const routes = {
   studylog:  { title: '讀書時間',   fn: renderStudylog  },
   grades:    { title: '成績紀錄',   fn: renderGrades    },
   badges:    { title: '我的徽章',   fn: renderBadges    },
+  shop:      { title: '獎勵商店',   fn: renderShop      },
   subjects:  { title: '課程資訊',   fn: renderSubjects  },
   print:     { title: '列印週計畫', fn: renderPrint     },
 };
