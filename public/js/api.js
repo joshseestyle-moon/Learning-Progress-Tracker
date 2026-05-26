@@ -16,7 +16,11 @@ export async function api(path, options = {}) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || '請求失敗');
   }
-  return res.json();
+  const data = await res.json();
+  if (data.newBadges && data.newBadges.length > 0) {
+    window.dispatchEvent(new CustomEvent('badge-earned', { detail: data.newBadges }));
+  }
+  return data;
 }
 
 export const get  = (path)         => api(path);

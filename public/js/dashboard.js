@@ -40,6 +40,9 @@ export async function render(el) {
 
   const todayProgress    = scheduled.filter(p => p.scheduled_date === todayStr);
   const tomorrowProgress = scheduled.filter(p => p.scheduled_date === tomorrowStr);
+  const overdueProgress  = scheduled
+    .filter(p => p.scheduled_date < todayStr && !p.is_done)
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
   el.innerHTML = `
     <div class="dashboard-grid">
@@ -66,6 +69,12 @@ export async function render(el) {
       <div class="card">
         <div class="card-title">📚 明日讀書進度</div>
         ${studyCard(tomorrowProgress, '明日沒有排定的讀書計畫')}
+      </div>
+
+      <!-- Overdue study progress -->
+      <div class="card">
+        <div class="card-title">⚠️ 待完成讀書進度</div>
+        ${overdueCard(overdueProgress)}
       </div>
 
       <!-- Exam countdown -->
@@ -122,6 +131,32 @@ function timetableCard(slots, emptyMsg) {
       <span style="font-size:.78rem;color:var(--text2);min-width:50px;">第${s.period}節</span>
       <span class="badge" style="background:${s.subject_color}">${escHtml(s.subject_name)}</span>
     </div>`).join('');
+}
+
+function overdueCard(items) {
+  if (!items.length) return `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
+  return items.map(p => {
+    const isPreview = p.type === 'preview';
+    const typeLabel = isPreview ? '預習' : '複習';
+    const daysLate  = Math.floor((new Date(today() + 'T00:00:00') - new Date(p.scheduled_date + 'T00:00:00')) / 86400000);
+    const lateColor = daysLate >= 7 ? 'var(--danger)' : '#e67e22';
+    return `
+    <div onclick="navigate('chapters')" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;cursor:pointer;
+                  border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;transition:background .12s;"
+         onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+      <span style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;border-radius:50%;
+                   border:2px solid ${lateColor};background:transparent;display:flex;align-items:center;
+                   justify-content:center;font-size:.65rem;color:${lateColor};">!</span>
+      <div style="min-width:0;flex:1;">
+        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+          <span class="badge" style="background:${p.subject_color}">${escHtml(p.subject_name)}</span>
+          <span style="font-size:.85rem;font-weight:600;">${escHtml(p.chapter_title)}</span>
+          <span style="font-size:.7rem;padding:.1rem .4rem;border-radius:999px;border:1.5px solid ${lateColor};color:${lateColor};">${typeLabel}</span>
+        </div>
+        <div style="font-size:.72rem;color:${lateColor};margin-top:.2rem;">應完成：${fmtDate(p.scheduled_date)}（已逾 ${daysLate} 天）</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function studyCard(items, emptyMsg) {

@@ -169,6 +169,18 @@ function openAndMigrate() {
     db.exec('ALTER TABLE grades ADD COLUMN class_rank TEXT');
   }
 
+  // Migration 10: user_badges table for achievement system
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_badges (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      badge_id  TEXT    NOT NULL,
+      earned_at TEXT    NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, badge_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
+  `);
+
   return db;
 }
 

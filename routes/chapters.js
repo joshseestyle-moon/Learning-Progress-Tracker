@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
+const { checkBadges } = require('../badges/checker');
 
 // GET / — chapters with preview info + all review sessions
 router.get('/', userCtx, (req, res) => {
@@ -67,7 +68,8 @@ router.patch('/progress/:progressId', userCtx, (req, res) => {
       newNotes,
       existing.id
     );
-  res.json({ ok: true, is_done: newDone });
+  const newBadges = (newDone && !existing.is_done) ? checkBadges(req.userId) : [];
+  res.json({ ok: true, is_done: newDone, newBadges });
 });
 
 // DELETE /progress/:progressId — delete a review session (preview cannot be deleted)
@@ -141,14 +143,16 @@ router.patch('/:id/progress', userCtx, (req, res) => {
     const newNotes = notes !== undefined ? (notes.trim() || null) : existing.notes;
     db.prepare('UPDATE chapter_progress SET is_done=?,done_at=?,scheduled_date=?,notes=? WHERE id=?')
       .run(newDone, newDone && !existing.done_at ? new Date().toISOString() : (newDone ? existing.done_at : null), newDate, newNotes, existing.id);
-    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes });
+    const newBadges = (newDone && !existing.is_done) ? checkBadges(req.userId) : [];
+    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes, newBadges });
   } else {
     const isDone   = toggle_done ? 1 : 0;
     const newNotes = notes !== undefined ? (notes.trim() || null) : null;
     db.prepare(
       'INSERT INTO chapter_progress (user_id,chapter_id,type,seq,scheduled_date,is_done,done_at,notes) VALUES (?,?,?,1,?,?,?,?)'
     ).run(req.userId, req.params.id, type, scheduled_date || null, isDone, isDone ? new Date().toISOString() : null, newNotes);
-    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, notes: newNotes });
+    const newBadges = isDone ? checkBadges(req.userId) : [];
+    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, notes: newNotes, newBadges });
   }
 });
 

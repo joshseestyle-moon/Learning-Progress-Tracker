@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
+const { checkBadges } = require('../badges/checker');
 
 router.get('/', userCtx, (req, res) => {
   let sql = `SELECT g.*, s.name AS subject_name, s.color AS subject_color
@@ -21,7 +22,8 @@ router.post('/', userCtx, (req, res) => {
   const result = db.prepare(
     'INSERT INTO grades (user_id,subject_id,exam_id,exam_name,exam_date,score,max_score,notes,class_rank) VALUES (?,?,?,?,?,?,?,?,?)'
   ).run(req.userId, subject_id, exam_id || null, exam_name, exam_date, score, max_score, notes || null, class_rank || null);
-  res.status(201).json({ id: result.lastInsertRowid });
+  const newBadges = checkBadges(req.userId);
+  res.status(201).json({ id: result.lastInsertRowid, newBadges });
 });
 
 router.put('/:id', userCtx, (req, res) => {

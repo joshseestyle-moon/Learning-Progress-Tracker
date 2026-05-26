@@ -18,6 +18,7 @@ app.use('/api/exams',       require('./routes/exams'));
 app.use('/api/chapters',    require('./routes/chapters'));
 app.use('/api/studylog',    require('./routes/studylog'));
 app.use('/api/grades',      require('./routes/grades'));
+app.use('/api/badges',      require('./routes/badges'));
 
 // Backup: checkpoint WAL first so the downloaded file is complete
 app.get('/api/backup', (req, res) => {

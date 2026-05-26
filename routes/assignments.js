@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
+const { checkBadges } = require('../badges/checker');
 
 router.get('/', userCtx, (req, res) => {
   let sql = `SELECT a.*, s.name AS subject_name, s.color AS subject_color
@@ -35,16 +36,18 @@ router.put('/:id', userCtx, (req, res) => {
   const a = db.prepare('SELECT * FROM assignments WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!a) return res.status(404).json({ error: '不存在' });
   const { subject_id, title, description, due_date, is_done } = req.body;
+  const finalDone = is_done !== undefined ? (is_done ? 1 : 0) : a.is_done;
   db.prepare(`UPDATE assignments SET subject_id=?,title=?,description=?,due_date=?,is_done=?,updated_at=datetime('now') WHERE id=?`)
     .run(
       subject_id !== undefined ? subject_id : a.subject_id,
       title || a.title,
       description !== undefined ? description : a.description,
       due_date || a.due_date,
-      is_done !== undefined ? (is_done ? 1 : 0) : a.is_done,
+      finalDone,
       req.params.id
     );
-  res.json({ ok: true });
+  const newBadges = (finalDone && !a.is_done) ? checkBadges(req.userId) : [];
+  res.json({ ok: true, newBadges });
 });
 
 router.delete('/:id', userCtx, (req, res) => {
