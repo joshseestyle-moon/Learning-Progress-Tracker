@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.2　　最後更新：2026-05-24  
+> 版本：2.3　　最後更新：2026-05-26  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -68,6 +68,28 @@ chapters.js
 
 **原則**：每次使用者操作後呼叫 `refresh(el)` 重新渲染，不做細粒度 DOM patch，確保畫面與資料庫狀態一致。
 
+**徽章觸發流程**（以新增讀書記錄為例）：
+
+```
+studylog.js POST route handler
+  → db.prepare('INSERT INTO study_log ...').run(...)
+  → checkBadges(req.userId)           ← badges/checker.js
+      ├─ 查詢 user_badges（已獲得）
+      ├─ 計算各條件（連續天數、累積時數、完成數等）
+      └─ INSERT OR IGNORE INTO user_badges（新達成的）
+         回傳 newlyEarned[]
+  → res.json({ id: ..., newBadges: newlyEarned })
+        │
+        ▼
+api.js  api()
+  if (data.newBadges.length > 0)
+    window.dispatchEvent(new CustomEvent('badge-earned', { detail: data.newBadges }))
+        │
+        ▼
+app.html  addEventListener('badge-earned')
+  badges.forEach((b, i) => setTimeout(() => showBadgeToast(b), i * 700))
+```
+
 ---
 
 ## 2. 模組系統
@@ -80,7 +102,12 @@ chapters.js
 server.js
   require('./db/db')             ← 啟動時建立 DB 連線並執行 Migration
   require('./routes/users')      ← 回傳 Express Router 實例
+  require('./routes/badges')     ← 徽章查詢
   require('./middleware/userContext')
+
+badges/
+  definitions.js                 ← 靜態徽章定義陣列（無 DB 依賴）
+  checker.js                     ← checkBadges(userId)，同步執行，回傳新獲得徽章
 ```
 
 所有 routes 透過 `app.use('/api/<resource>', router)` 掛載，彼此隔離。
@@ -97,7 +124,8 @@ app.html
 router.js
   import { render as renderDashboard } from './dashboard.js'
   import { render as renderTimetable } from './timetable.js'
-  ... (8 個頁面模組)
+  import { render as renderBadges }    from './badges.js'
+  ... (9 個頁面模組)
         │
 每個頁面模組
   import { get, post, ... } from './api.js'
@@ -642,7 +670,7 @@ CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 9 個遷移
+### 已實作的 10 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -802,6 +830,28 @@ if (!gradeCols.includes('class_rank')) {
 ```
 
 > 使用者可在成績表格的班排名欄直接輸入（如 `3` 或 `3/40`），失焦或按 Enter 自動儲存；亦可在新增/編輯表單中填寫。
+
+#### Migration 10：新增 `user_badges` 資料表（成就徽章系統）
+
+**觸發條件**：每次啟動皆執行（使用 `CREATE TABLE IF NOT EXISTS`，冪等）
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`
+
+```js
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_badges (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    badge_id  TEXT    NOT NULL,
+    earned_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, badge_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
+`);
+```
+
+> 徽章定義（名稱、圖示、說明、稀有度）存於 `badges/definitions.js`，不在 DB 中。  
+> 若要新增徽章，只需在 `definitions.js` 加入新條目並在 `checker.js` 加入判斷邏輯，不需要 DB migration。
 
 ---
 
@@ -1074,9 +1124,10 @@ users
  ├─── study_log          (user_id    → users.id    CASCADE)
  │     ├── [subject_id]  → subjects.id CASCADE
  │     └── [chapter_id]  → chapters.id SET NULL
- └─── grades             (user_id    → users.id    CASCADE)
-       ├── [subject_id]  → subjects.id CASCADE
-       └── [exam_id]     → exams.id   SET NULL
+ ├─── grades             (user_id    → users.id    CASCADE)
+ │     ├── [subject_id]  → subjects.id CASCADE
+ │     └── [exam_id]     → exams.id   SET NULL
+ └─── user_badges        (user_id → users.id CASCADE)
 ```
 
 `[]` 表示 NOT NULL FK；`[x]` 表示可為 NULL 的 FK。
@@ -1354,6 +1405,30 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 
 ---
 
+### 資料表：`user_badges`
+
+```sql
+CREATE TABLE user_badges (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    badge_id  TEXT    NOT NULL,
+    earned_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, badge_id)
+);
+CREATE INDEX idx_user_badges_user ON user_badges(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `user_id` | FK | 所屬使用者；CASCADE 刪除 |
+| `badge_id` | TEXT | 對應 `badges/definitions.js` 中的 `id` 字串（如 `"first_log"`） |
+| `earned_at` | TEXT | UTC ISO-8601，記錄獲得時間點 |
+
+**UNIQUE 約束**：同一使用者不會重複獲得同一徽章；`badges/checker.js` 以 `INSERT OR IGNORE` 確保冪等。  
+**徽章定義**：存於 `badges/definitions.js`（純 JS 陣列），不入資料庫，欄位有 `id`、`category`、`icon`、`name`、`desc`、`rarity`。
+
+---
+
 ### 索引總表
 
 | 索引名稱 | 資料表 | 欄位 | 用途 |
@@ -1365,6 +1440,7 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 | `idx_study_log_user_date` | `study_log` | `(user_id, log_date)` | 日期範圍讀書時間查詢 |
 | `idx_grades_user_subject` | `grades` | `(user_id, subject_id)` | 依科目篩選成績 |
 | `idx_chapter_progress_user` | `chapter_progress` | `(user_id)` | 讀書進度查詢（JOIN chapters） |
+| `idx_user_badges_user` | `user_badges` | `(user_id)` | 查詢使用者已獲得徽章列表 |
 
 ---
 
@@ -1377,7 +1453,8 @@ CREATE INDEX idx_grades_user_subject ON grades(user_id, subject_id);
 | `chapters` | `chapter_progress.chapter_id` | CASCADE |
 | `chapters` | `study_log.chapter_id` | SET NULL（記錄保留，chapter_id 清空） |
 | `exams` | `grades.exam_id` | SET NULL（成績保留，exam_id 清空） |
+| `users` | `user_badges.user_id` | CASCADE（使用者刪除時連帶刪除全部徽章紀錄） |
 
 ---
 
-*本文件反映截至 2026-05-24 的實作狀態（v2.2）。*
+*本文件反映截至 2026-05-26 的實作狀態（v2.3）。*

@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：2.2　　最後更新：2026-05-24
+> 版本：2.3　　最後更新：2026-05-26
 
 ---
 
@@ -88,6 +88,10 @@ X:\class\
 ├── middleware/
 │   └── userContext.js          # 解析 X-User-Id header，注入 req.userId
 │
+├── badges/
+│   ├── definitions.js          # 16 枚徽章定義（id、icon、名稱、描述、稀有度）
+│   └── checker.js              # checkBadges(userId)：檢查並頒發新徽章
+│
 ├── routes/
 │   ├── users.js                # 使用者 CRUD
 │   ├── subjects.js             # 科目 CRUD
@@ -96,18 +100,19 @@ X:\class\
 │   ├── exams.js                # 考試 CRUD
 │   ├── chapters.js             # 章節 CRUD + 進度管理
 │   ├── studylog.js             # 讀書時間記錄
-│   └── grades.js               # 成績紀錄
+│   ├── grades.js               # 成績紀錄
+│   └── badges.js               # 徽章查詢
 │
 └── public/
     ├── index.html              # 個人檔案選擇頁
-    ├── app.html                # App Shell（側邊欄 + Hash Router）
+    ├── app.html                # App Shell（側邊欄 + Hash Router + badge toast）
     ├── css/
     │   ├── reset.css           # CSS Reset
     │   ├── theme.css           # 亮／暗色 CSS 變數
     │   ├── app.css             # 元件樣式
     │   └── print.css           # 列印週計畫 A4 版面
     ├── js/
-    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id
+    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id；自動派送 badge-earned 事件
     │   ├── router.js           # Hash Router（#dashboard、#exams…）
     │   ├── dashboard.js        # 今日概覽頁
     │   ├── timetable.js        # 每週課表頁
@@ -116,6 +121,7 @@ X:\class\
     │   ├── chapters.js         # 讀書進度頁
     │   ├── studylog.js         # 讀書時間頁
     │   ├── grades.js           # 成績紀錄頁
+    │   ├── badges.js           # 我的徽章頁
     │   ├── subjects.js         # 課程資訊管理頁
     │   └── print.js            # 列印週計畫頁
     └── vendor/
@@ -201,7 +207,8 @@ users ──┬── timetable_slots
         ├── assignments
         ├── exams ──────── grades
         ├── chapter_progress
-        └── study_log
+        ├── study_log
+        └── user_badges
 
 subjects ──┬── timetable_slots
            ├── assignments
@@ -334,6 +341,18 @@ subjects ──┬── timetable_slots
 | `max_score` | REAL | 滿分（預設 100） |
 | `notes` | TEXT | 備註 |
 | `class_rank` | TEXT | 班排名（選填，如 `3` 或 `3/40`） |
+
+#### `user_badges` — 使用者已獲得徽章
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `badge_id` | TEXT | 徽章識別碼（對應 `badges/definitions.js`） |
+| `earned_at` | TEXT | 獲得時間（ISO 8601） |
+
+- 唯一約束：`(user_id, badge_id)`，每人每枚徽章只記錄一次
+- 徽章定義（名稱、圖示、描述、稀有度）存於後端檔案，不存於 DB
 
 ---
 
@@ -503,6 +522,48 @@ subjects ──┬── timetable_slots
 
 ---
 
+### 徽章 `/api/badges`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/badges` | 取得目前使用者所有徽章狀態（含已獲得與尚未解鎖） |
+
+**回應格式**（陣列，每筆為一枚徽章）：
+```json
+[
+  {
+    "id": "streak_7",
+    "category": "習慣",
+    "icon": "🌟",
+    "name": "一週達人",
+    "desc": "連續7天記錄讀書",
+    "rarity": "uncommon",
+    "earned": true,
+    "earned_at": "2026-05-26 14:00:00"
+  },
+  {
+    "id": "streak_14",
+    "category": "習慣",
+    "icon": "💪",
+    "name": "兩週衝刺",
+    "desc": "連續14天記錄讀書",
+    "rarity": "rare",
+    "earned": false,
+    "earned_at": null
+  }
+]
+```
+
+**徽章自動頒發機制**：不透過此端點，而是在以下操作的 POST/PUT/PATCH 回應中附帶 `newBadges` 陣列：
+- `POST /api/studylog` — 新增讀書記錄後檢查
+- `PUT /api/assignments/:id` — 作業標記完成後檢查
+- `PATCH /api/chapters/:id/progress`、`PATCH /api/chapters/progress/:id` — 章節進度完成後檢查
+- `POST /api/grades` — 新增成績後檢查
+
+前端 `api.js` 自動偵測回應中的 `newBadges` 欄位，觸發 `badge-earned` CustomEvent，`app.html` 監聽後顯示右下角 toast 通知。
+
+---
+
 ### 備份與還原 `/api/backup`
 
 | 方法 | 路徑 | 說明 |
@@ -535,6 +596,7 @@ subjects ──┬── timetable_slots
 | `/app#chapters` | 讀書進度 | `chapters.js` |
 | `/app#studylog` | 讀書時間 | `studylog.js` |
 | `/app#grades` | 成績紀錄 | `grades.js` |
+| `/app#badges` | 我的徽章 | `badges.js` |
 | `/app#subjects` | 課程資訊 | `subjects.js` |
 | `/app#print` | 列印週計畫 | `print.js` |
 
@@ -545,9 +607,9 @@ subjects ──┬── timetable_slots
 getUserId()          — 從 localStorage 取得目前使用者 ID
 getUserName()        — 從 localStorage 取得使用者名稱
 get(path)            — GET 請求
-post(path, body)     — POST 請求
-put(path, body)      — PUT 請求
-patch(path, body)    — PATCH 請求
+post(path, body)     — POST 請求（若回應含 newBadges，自動派送 badge-earned 事件）
+put(path, body)      — PUT 請求（同上）
+patch(path, body)    — PATCH 請求（同上）
 del(path)            — DELETE 請求
 escHtml(s)           — XSS 防護，轉義 HTML 特殊字元
 fmtDate(d)           — 日期格式化（YYYY-MM-DD → 中文格式）
@@ -574,6 +636,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **明日課表**：顯示明天節次與科目
 - **今日讀書進度**：排定日期為今天的預習/複習項目，顯示完成狀態與備註
 - **明日讀書進度**：排定日期為明天的預習/複習項目
+- **待完成讀書進度**：所有 `scheduled_date < 今天` 且 `is_done = 0` 的進度，按日期由舊到新排列；顯示科目、章節、類型、應完成日期及已逾天數（橘色提示）；無逾期時顯示「✓ 目前沒有待完成項目」；點擊項目跳至讀書進度頁
 - **考試倒數**：最近 5 筆未完成考試，顯示剩餘天數（紅/黃/綠區分緊急程度），每筆考試下方顯示對應科目的預習/複習章節完成進度條
 
 #### 每週課表（#timetable）
@@ -621,6 +684,14 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 記錄表格：日期、科目、考試名稱、得分/滿分、班排名（可直接在表格輸入，失焦或 Enter 自動儲存）
 - 新增/編輯/刪除成績
 - 新增/編輯表單中有「從考試倒數選擇（選填）」下拉選單，選擇後自動填入考試名稱、日期、科目；也可略過選單直接手動輸入；選擇的考試記錄會以 `exam_id` FK 與成績連結
+
+#### 我的徽章（#badges）
+- 頁面頂部顯示已獲得徽章數 / 總數與進度條（百分比）
+- 以「習慣、努力、完成、成績」四類分區展示，每區一個 grid
+- **已解鎖**徽章：彩色邊框（依稀有度：普通=灰藍、進階=藍、稀有=紫、傳說=金），顯示徽章圖示、名稱、說明、稀有度標籤、獲得日期
+- **尚未解鎖**：灰階、半透明，顯示 🔒
+- 稀有度四級：普通（common）、進階（uncommon）、稀有（rare）、傳說（epic）
+- 新徽章解鎖時，右下角彈出 toast 通知（動畫入場，3.5 秒後自動消失），多枚徽章依序顯示（每 0.7 秒一枚）
 
 #### 課程資訊（#subjects）
 - **左欄**：科目列表，可新增（24色色票，6欄×4列格狀選色）、編輯、刪除
@@ -738,4 +809,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-05-24 的實作狀態（v2.2）。*
+*本文件反映截至 2026-05-26 的實作狀態（v2.3）。*
