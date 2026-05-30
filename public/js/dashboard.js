@@ -1,4 +1,4 @@
-import { get, patch, escHtml, fmtDate, today } from './api.js';
+import { get, post, patch, escHtml, fmtDate, today } from './api.js';
 
 let _el = null;
 
@@ -124,7 +124,8 @@ export async function render(el) {
         }).join('') : '<div class="text-muted text-sm">近期沒有考試</div>'}
       </div>
 
-    </div>`;
+    </div>
+    <div id="dash-time-modal" class="modal-overlay hidden"></div>`;
 }
 
 function timetableCard(slots, emptyMsg) {
@@ -144,8 +145,9 @@ function overdueCard(items) {
     const daysLate  = Math.floor((new Date(today() + 'T00:00:00') - new Date(p.scheduled_date + 'T00:00:00')) / 86400000);
     const lateColor = daysLate >= 7 ? 'var(--danger)' : '#e67e22';
     return `
-    <div data-prog-id="${p.id}" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;
-                  border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;">
+    <div data-prog-id="${p.id}" data-subject-id="${p.subject_id}" data-chapter-id="${p.chapter_id}" data-is-done="0"
+         style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;
+                border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;">
       <button onclick="dashToggleProgress('${p.id}', true)" title="標記為完成"
         style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
                border:2px solid ${lateColor};background:transparent;display:flex;align-items:center;
@@ -169,7 +171,8 @@ function studyCard(items, emptyMsg) {
     const typeLabel = isPreview ? '預習' : '複習';
     const color     = isPreview ? 'var(--accent)' : 'var(--success)';
     return `
-    <div data-prog-id="${p.id}" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
+    <div data-prog-id="${p.id}" data-subject-id="${p.subject_id}" data-chapter-id="${p.chapter_id}" data-is-done="${p.is_done ? '1' : '0'}"
+         style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
       <button onclick="dashToggleProgress('${p.id}', false)" title="${p.is_done ? '標記為未完成' : '標記為完成'}"
         style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
                border:2px solid ${color};background:${p.is_done ? color : 'transparent'};
@@ -191,30 +194,84 @@ function studyCard(items, emptyMsg) {
 
 // ── Global handler (called from inline onclick in studyCard / overdueCard) ──
 
+function openDashTimeModal(onSave, onSkip) {
+  if (!_el) return onSkip();
+  const modal = _el.querySelector('#dash-time-modal');
+  if (!modal) return onSkip();
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:320px;">
+      <div class="modal-title">記錄學習時間</div>
+      <div class="form-group">
+        <label class="form-label">花了多少分鐘？</label>
+        <input id="dtm-minutes" type="number" class="form-input" min="1" max="600" placeholder="例：30">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="dtm-skip">略過</button>
+        <button class="btn btn-primary" id="dtm-save">記錄</button>
+      </div>
+    </div>`;
+  modal.classList.remove('hidden');
+  modal.querySelector('#dtm-skip').onclick = () => { modal.classList.add('hidden'); onSkip(); };
+  modal.querySelector('#dtm-save').onclick = async () => {
+    const minutes = parseInt(modal.querySelector('#dtm-minutes').value) || 0;
+    if (minutes < 1) {
+      modal.querySelector('#dtm-minutes').focus();
+      return;
+    }
+    modal.classList.add('hidden');
+    await onSave(minutes);
+  };
+  modal.onclick = e => { if (e.target === modal) { modal.classList.add('hidden'); onSkip(); } };
+  setTimeout(() => modal.querySelector('#dtm-minutes').focus(), 50);
+}
+
 window.dashToggleProgress = async function(progressId, removeOnDone) {
   const row = document.querySelector(`[data-prog-id="${progressId}"]`);
   if (!row) return;
   const btn = row.querySelector('button');
+  const markingDone = removeOnDone || row.dataset.isDone === '0';
 
   btn.disabled = true;
   btn.style.opacity = '.4';
 
   try {
     await patch('/chapters/progress/' + progressId, { toggle_done: true });
-    if (removeOnDone) {
-      // Overdue item: fade out then remove; show empty message if list is now empty
-      row.style.transition = 'opacity .25s';
-      row.style.opacity = '0';
-      setTimeout(() => {
-        const parent = row.parentElement;
-        row.remove();
-        if (parent && !parent.querySelector('[data-prog-id]')) {
-          parent.innerHTML = `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
-        }
-      }, 260);
+
+    function afterToggle() {
+      if (removeOnDone) {
+        row.style.transition = 'opacity .25s';
+        row.style.opacity = '0';
+        setTimeout(() => {
+          const parent = row.parentElement;
+          row.remove();
+          if (parent && !parent.querySelector('[data-prog-id]')) {
+            parent.innerHTML = `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
+          }
+        }, 260);
+      } else {
+        if (_el) render(_el);
+      }
+    }
+
+    if (markingDone) {
+      openDashTimeModal(
+        async (minutes) => {
+          if (minutes > 0) {
+            try {
+              await post('/studylog', {
+                subject_id:  +row.dataset.subjectId,
+                log_date:    today(),
+                minutes,
+                chapter_id:  +row.dataset.chapterId,
+              });
+            } catch (_) {}
+          }
+          afterToggle();
+        },
+        afterToggle
+      );
     } else {
-      // Study card: re-render dashboard so done state and opacity refresh correctly
-      if (_el) render(_el);
+      afterToggle();
     }
   } catch (e) {
     btn.disabled = false;

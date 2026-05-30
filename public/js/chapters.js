@@ -91,7 +91,7 @@ function chapterRow(c, minutes) {
         ${previewCell(c)}
       </td>
       <td style="padding:.4rem .5rem;">
-        ${reviewsCell(c.id, reviews)}
+        ${reviewsCell(c.id, reviews, c.subject_id)}
       </td>
       <td style="padding:.4rem .5rem;text-align:center;">
         ${minutes > 0
@@ -111,7 +111,7 @@ function previewCell(c) {
     : `border:1.5px dashed ${color};color:${color};background:transparent;`;
   return `
     <div style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;">
-      <button class="ch-toggle-btn" data-id="${c.id}" data-type="preview"
+      <button class="ch-toggle-btn" data-id="${c.id}" data-type="preview" data-subject-id="${c.subject_id}" data-done="${c.preview_done ? '1' : '0'}"
         style="padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;">
         ${c.preview_done ? '✓ 預習' : '預習'}
       </button>
@@ -129,7 +129,7 @@ function previewCell(c) {
     </div>`;
 }
 
-function reviewsCell(chId, reviews) {
+function reviewsCell(chId, reviews, subjectId) {
   const color = 'var(--success)';
   return `
     <div style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:5px;">
@@ -139,7 +139,7 @@ function reviewsCell(chId, reviews) {
           : `border:1.5px dashed ${color};color:${color};background:transparent;`;
         return `
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-          <button class="rev-toggle-btn" data-pid="${r.id}"
+          <button class="rev-toggle-btn" data-pid="${r.id}" data-subject-id="${subjectId}" data-ch-id="${chId}" data-done="${r.is_done ? '1' : '0'}"
             style="padding:.15rem .45rem;border-radius:999px;font-size:.73rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;white-space:nowrap;">
             ${r.is_done ? '✓ ' : ''}第${r.seq}次複習
           </button>
@@ -237,6 +237,39 @@ function openDateModal(el, title, currentDate, currentNotes, onSave, onClear) {
   setTimeout(() => modal.querySelector('#dm-notes').focus(), 50);
 }
 
+function buildTimeModal() {
+  return `
+    <div class="modal-box" style="max-width:320px;">
+      <div class="modal-title">記錄學習時間</div>
+      <div class="form-group">
+        <label class="form-label">花了多少分鐘？</label>
+        <input id="tm-minutes" type="number" class="form-input" min="1" max="600" placeholder="例：30">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="tm-skip">略過</button>
+        <button class="btn btn-primary" id="tm-save">記錄</button>
+      </div>
+    </div>`;
+}
+
+function openTimeModal(el, onSave, onSkip) {
+  const modal = el.querySelector('#date-modal');
+  modal.innerHTML = buildTimeModal();
+  modal.classList.remove('hidden');
+  modal.querySelector('#tm-skip').onclick = async () => { modal.classList.add('hidden'); await onSkip(); };
+  modal.querySelector('#tm-save').onclick = async () => {
+    const minutes = parseInt(modal.querySelector('#tm-minutes').value) || 0;
+    if (minutes < 1) {
+      modal.querySelector('#tm-minutes').focus();
+      return;
+    }
+    modal.classList.add('hidden');
+    await onSave(minutes);
+  };
+  modal.onclick = async e => { if (e.target === modal) { modal.classList.add('hidden'); await onSkip(); } };
+  setTimeout(() => modal.querySelector('#tm-minutes').focus(), 50);
+}
+
 function openModal(el, chapter, preSubject) {
   const modal = el.querySelector('#ch-modal');
   modal.innerHTML = buildModal(chapter);
@@ -271,8 +304,22 @@ function attachEvents(el, chapters) {
   // Preview toggle
   el.querySelectorAll('.ch-toggle-btn').forEach(btn => {
     btn.onclick = async () => {
+      const markingDone = btn.dataset.done === '0';
       await patch('/chapters/' + btn.dataset.id + '/progress', { type: 'preview', toggle_done: true });
-      await refresh(el);
+      if (markingDone) {
+        openTimeModal(el,
+          async (minutes) => {
+            if (minutes > 0) {
+              const today = new Date().toISOString().slice(0, 10);
+              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: today, minutes, chapter_id: +btn.dataset.id }); } catch (_) {}
+            }
+            await refresh(el);
+          },
+          () => refresh(el)
+        );
+      } else {
+        await refresh(el);
+      }
     };
   });
 
@@ -294,8 +341,22 @@ function attachEvents(el, chapters) {
   // Review toggle
   el.querySelectorAll('.rev-toggle-btn').forEach(btn => {
     btn.onclick = async () => {
+      const markingDone = btn.dataset.done === '0';
       await patch('/chapters/progress/' + btn.dataset.pid, { toggle_done: true });
-      await refresh(el);
+      if (markingDone) {
+        openTimeModal(el,
+          async (minutes) => {
+            if (minutes > 0) {
+              const today = new Date().toISOString().slice(0, 10);
+              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: today, minutes, chapter_id: +btn.dataset.chId }); } catch (_) {}
+            }
+            await refresh(el);
+          },
+          () => refresh(el)
+        );
+      } else {
+        await refresh(el);
+      }
     };
   });
 

@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：2.5　　最後更新：2026-05-30
+> 版本：2.9　　最後更新：2026-05-30
 
 ---
 
@@ -367,8 +367,15 @@ subjects ──┬── timetable_slots
 | `id` | INTEGER PK | — |
 | `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
 | `delta` | INTEGER | 正值=獲得，負值=扣除 |
-| `reason` | TEXT | 來源，格式：`badge:<badge_id>`、`redeem:<item_id>`、`custom_badge:<id>` |
+| `reason` | TEXT | 來源格式詳見下表 |
 | `created_at` | TEXT | 交易時間 |
+
+| reason 格式 | 說明 |
+|---|---|
+| `badge:<badge_id>` | Migration 11 回填舊有徽章（歷史資料，v2.8 前） |
+| `exchange:<badge_id>` | 系統徽章換點數（v2.8+） |
+| `exchange:custom_<id>` | 自訂成就換點數（v2.8+） |
+| `redeem:<item_id>` | 兌換商店獎勵（負值） |
 
 - 當前餘額 = `SUM(delta) WHERE user_id = ?`
 - 系統徽章稀有度對應點數：普通=10、進階=25、稀有=50、傳說=100
@@ -392,7 +399,7 @@ subjects ──┬── timetable_slots
 | `cost` | INTEGER | 兌換時的點數成本 |
 | `redeemed_at` | TEXT | 兌換時間 |
 
-#### `custom_badges` — 使用者自訂成就（Migration 12）
+#### `custom_badges` — 使用者自訂成就（Migration 12 + 13）
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
@@ -401,9 +408,10 @@ subjects ──┬── timetable_slots
 | `name` | TEXT | 成就名稱 |
 | `icon` | TEXT | emoji 圖示，預設 🏅 |
 | `desc` | TEXT | 說明（可為空） |
-| `points` | INTEGER | 完成後獲得的點數 |
+| `points` | INTEGER | 兌換後獲得的點數（v2.8：透過 exchange 入帳） |
+| `category` | TEXT | 分類，預設 `自訂`（可選系統分類：習慣/努力/完成/成績/自訂）（Migration 13） |
 
-#### `custom_badge_earned` — 自訂成就完成記錄（Migration 12）
+#### `custom_badge_earned` — 自訂成就「已達成、待兌換」暫存記錄（Migration 12）
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
@@ -412,7 +420,22 @@ subjects ──┬── timetable_slots
 | `custom_badge_id` | INTEGER FK | 對應自訂成就（ON DELETE CASCADE） |
 | `earned_at` | TEXT | 完成時間 |
 
-- 唯一約束：`(user_id, custom_badge_id)`，同一成就只能完成一次
+- 唯一約束：`(user_id, custom_badge_id)` — 同一成就完成後需先兌換才能再次達成
+- v2.8：完成成就不再自動入帳，需按「換 N 點」兌換後才入帳，同時清除此記錄
+
+#### `badge_exchange_log` — 徽章兌換歷史（Migration 14）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `badge_id` | TEXT | 徽章識別碼（系統：`streak_7`；自訂：`custom_3`） |
+| `badge_name` | TEXT | 兌換時的名稱快照 |
+| `badge_icon` | TEXT | 兌換時的圖示快照 |
+| `points` | INTEGER | 兌換獲得的點數 |
+| `exchanged_at` | TEXT | 兌換時間 |
+
+- 每日鎖定：同一 `badge_id` 當天已有兌換記錄則禁止重新獲得，防止刷點
 
 ---
 
@@ -587,9 +610,12 @@ subjects ──┬── timetable_slots
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/badges` | 取得目前使用者所有徽章（系統 + 自訂），含已獲得/尚未解鎖、點數欄位 |
-| POST | `/api/badges/custom` | 新增自訂成就 |
-| DELETE | `/api/badges/custom/:id` | 刪除自訂成就（連帶刪除完成記錄） |
-| POST | `/api/badges/custom/:id/earn` | 標記自訂成就完成，自動入帳對應點數 |
+| GET | `/api/badges/exchanges` | 取得徽章兌換歷史（最新在前） |
+| POST | `/api/badges/custom` | 新增自訂成就（可指定 category） |
+| DELETE | `/api/badges/custom/:id` | 刪除自訂成就（連帶清除完成記錄與 point_log 的 exchange 記錄） |
+| POST | `/api/badges/custom/:id/earn` | 標記自訂成就「已完成」（v2.8：不再自動入帳；需另行兌換） |
+| POST | `/api/badges/custom/:id/exchange` | 自訂成就換點數（原子操作：刪除完成記錄 + 入帳 + 寫兌換紀錄） |
+| POST | `/api/badges/:badgeId/exchange` | 系統徽章換點數（同上，刪除 user_badges 記錄） |
 
 **GET 回應格式**（陣列，系統徽章在前、自訂成就在後）：
 ```json
@@ -631,13 +657,15 @@ subjects ──┬── timetable_slots
 | 稀有（rare） | 50 |
 | 傳說（epic） | 100 |
 
-**系統徽章自動頒發機制**：在以下操作的 POST/PUT/PATCH 回應中附帶 `newBadges` 陣列，同時寫入 `point_log`：
+**系統徽章自動頒發機制**：在以下操作的 POST/PUT/PATCH 回應中附帶 `newBadges` 陣列（v2.8 起，頒發時不再自動入帳 point_log；需透過「換 N 點」兌換才入帳）：
 - `POST /api/studylog` — 新增讀書記錄後檢查
 - `PUT /api/assignments/:id` — 作業標記完成後檢查
 - `PATCH /api/chapters/:id/progress`、`PATCH /api/chapters/progress/:id` — 章節進度完成後檢查
 - `POST /api/grades` — 新增成績後檢查
 
 前端 `api.js` 自動偵測回應中的 `newBadges` 欄位，觸發 `badge-earned` CustomEvent，`app.html` 監聽後顯示右下角 toast 通知。
+
+**兌換限制**：同一徽章當天已兌換後，`badge_exchange_log` 中有當日記錄，`checkBadges()` 不再重新頒發，需隔天才能再次獲得。
 
 ---
 
@@ -738,7 +766,8 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **明日課表**：顯示明天節次與科目
 - **今日讀書進度**：排定日期為今天的預習/複習項目，顯示完成狀態與備註
 - **明日讀書進度**：排定日期為明天的預習/複習項目
-- **待完成讀書進度**：所有 `scheduled_date < 今天` 且 `is_done = 0` 的進度，按日期由舊到新排列；顯示科目、章節、類型、應完成日期及已逾天數（橘色提示）；無逾期時顯示「✓ 目前沒有待完成項目」；點擊項目跳至讀書進度頁
+- **待完成讀書進度**：所有 `scheduled_date < 今天` 且 `is_done = 0` 的進度，按日期由舊到新排列；顯示科目、章節、類型、應完成日期及已逾天數（橘色提示）；無逾期時顯示「✓ 目前沒有待完成項目」；點擊 `!` 圓圈按鈕標記完成（同時彈出時間填寫視窗，可略過），項目完成後淡出移除
+- **今日/明日讀書進度圓圈按鈕**：點擊可直接切換完成狀態；標記完成時彈出「記錄學習時間」視窗（填入分鐘數後自動寫入讀書時間記錄，可按「略過」跳過）
 - **考試倒數**：最近 5 筆未完成考試，顯示剩餘天數（紅/黃/綠區分緊急程度），每筆考試下方顯示對應科目的預習/複習章節完成進度條
 
 #### 每週課表（#timetable）
@@ -770,7 +799,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 每個章節有「預習」（1次）與「複習」（可多次）的獨立進度
 - 複習次數不限，可透過「+ 新增複習」逐次新增，並可刪除任一複習記錄
 - 預習與每次複習均可設定排定日期（連動行事曆）及備註
-- 按鈕顯示完成狀態（空心虛線=未完成，實心填色=已完成）
+- 按鈕顯示完成狀態（空心虛線=未完成，實心填色=已完成）；點擊標記完成時彈出「記錄學習時間」視窗，輸入分鐘數後自動寫入讀書時間記錄（關聯科目與章節），可按「略過」跳過；取消完成時直接切換，不顯示視窗
 - 顯示該章節累積讀書時間（來自讀書時間記錄）
 - Accordion header 顯示各科目的預習/複習完成比例
 - Accordion 底部有「🗑 刪除此科目所有章節」按鈕，確認後批次刪除該科目所有章節（chapter_progress 連帶清除）
@@ -792,9 +821,12 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 以「習慣、努力、完成、成績」四系統類別分區展示，末尾為「自訂成就」區塊
 - **已解鎖**徽章：彩色邊框（依稀有度：普通=灰藍、進階=藍、稀有=紫、傳說=金、自訂=綠），顯示徽章圖示、名稱、說明、稀有度標籤、⭐ 點數、獲得日期
 - **尚未解鎖**系統徽章：灰階、半透明，顯示 🔒 與點數
-- **自訂成就**（未完成）：顯示「完成！」與「刪除」兩個按鈕；點「完成！」立即入帳點數
-- **新增自訂成就**：「＋ 新增自訂成就」展開表單，填入圖示（emoji）、名稱、說明、點數後送出；各帳號自訂成就完全隔離
-- 稀有度四級：普通（common）、進階（uncommon）、稀有（rare）、傳說（epic）
+- **已解鎖但尚未兌換的徽章**：顯示「換 N 點」按鈕（橘色）；點擊後原子兌換：徽章恢復未解鎖狀態、點數入帳、寫兌換紀錄；每種徽章每天只能兌換一次（隔天才能重新獲得）
+- **自訂成就**（未完成）：顯示「完成！」與「刪除」兩個按鈕；點「完成！」標記為「已達成，待兌換」（v2.8：不再自動入帳）
+- **自訂成就**（已達成待兌換）：顯示「換 N 點」按鈕；兌換後點數入帳、成就恢復未完成狀態、寫兌換紀錄
+- **新增自訂成就**：「＋ 新增自訂成就」展開表單，填入圖示（emoji）、名稱、說明、點數、所屬分類（可選習慣/努力/完成/成績/自訂）後送出；選非「自訂」分類的成就會顯示在對應系統分類區塊中，而非末尾
+- **兌換紀錄**：頁面底部顯示所有兌換歷史（圖示、名稱、點數、時間）
+- 稀有度四級：普通（common）、進階（uncommon）、稀有（rare）、傳說（epic）；自訂成就另有 custom（綠色）
 - 新徽章解鎖時，右下角彈出 toast 通知（動畫入場，3.5 秒後自動消失），多枚徽章依序顯示（每 0.7 秒一枚）
 
 #### 獎勵商店（#shop）
@@ -920,4 +952,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-05-30 的實作狀態（v2.5）。*
+*本文件反映截至 2026-05-30 的實作狀態（v2.9）。*
