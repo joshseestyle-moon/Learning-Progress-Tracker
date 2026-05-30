@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：2.3　　最後更新：2026-05-26
+> 版本：2.4　　最後更新：2026-05-30
 
 ---
 
@@ -101,7 +101,8 @@ X:\class\
 │   ├── chapters.js             # 章節 CRUD + 進度管理
 │   ├── studylog.js             # 讀書時間記錄
 │   ├── grades.js               # 成績紀錄
-│   └── badges.js               # 徽章查詢
+│   ├── badges.js               # 系統徽章 + 自訂成就
+│   └── shop.js                 # 獎勵商店（許願池、兌換、紀錄）
 │
 └── public/
     ├── index.html              # 個人檔案選擇頁
@@ -208,7 +209,12 @@ users ──┬── timetable_slots
         ├── exams ──────── grades
         ├── chapter_progress
         ├── study_log
-        └── user_badges
+        ├── user_badges
+        ├── point_log
+        ├── reward_items
+        ├── redemption_log
+        ├── custom_badges ──── custom_badge_earned
+        └── (透過 subjects 繼承) chapters ──── chapter_progress
 
 subjects ──┬── timetable_slots
            ├── assignments
@@ -342,7 +348,7 @@ subjects ──┬── timetable_slots
 | `notes` | TEXT | 備註 |
 | `class_rank` | TEXT | 班排名（選填，如 `3` 或 `3/40`） |
 
-#### `user_badges` — 使用者已獲得徽章
+#### `user_badges` — 使用者已獲得系統徽章
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
@@ -353,6 +359,60 @@ subjects ──┬── timetable_slots
 
 - 唯一約束：`(user_id, badge_id)`，每人每枚徽章只記錄一次
 - 徽章定義（名稱、圖示、描述、稀有度）存於後端檔案，不存於 DB
+
+#### `point_log` — 點數流水帳（Migration 11）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `delta` | INTEGER | 正值=獲得，負值=扣除 |
+| `reason` | TEXT | 來源，格式：`badge:<badge_id>`、`redeem:<item_id>`、`custom_badge:<id>` |
+| `created_at` | TEXT | 交易時間 |
+
+- 當前餘額 = `SUM(delta) WHERE user_id = ?`
+- 系統徽章稀有度對應點數：普通=10、進階=25、稀有=50、傳說=100
+
+#### `reward_items` — 許願池（使用者自訂獎勵，Migration 11）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `name` | TEXT | 獎勵名稱 |
+| `cost` | INTEGER | 所需點數 |
+
+#### `redemption_log` — 兌換紀錄快照（Migration 11）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `item_name` | TEXT | 兌換時的獎勵名稱（快照，避免刪除後遺失） |
+| `cost` | INTEGER | 兌換時的點數成本 |
+| `redeemed_at` | TEXT | 兌換時間 |
+
+#### `custom_badges` — 使用者自訂成就（Migration 12）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `name` | TEXT | 成就名稱 |
+| `icon` | TEXT | emoji 圖示，預設 🏅 |
+| `desc` | TEXT | 說明（可為空） |
+| `points` | INTEGER | 完成後獲得的點數 |
+
+#### `custom_badge_earned` — 自訂成就完成記錄（Migration 12）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `custom_badge_id` | INTEGER FK | 對應自訂成就（ON DELETE CASCADE） |
+| `earned_at` | TEXT | 完成時間 |
+
+- 唯一約束：`(user_id, custom_badge_id)`，同一成就只能完成一次
 
 ---
 
@@ -526,9 +586,12 @@ subjects ──┬── timetable_slots
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/badges` | 取得目前使用者所有徽章狀態（含已獲得與尚未解鎖） |
+| GET | `/api/badges` | 取得目前使用者所有徽章（系統 + 自訂），含已獲得/尚未解鎖、點數欄位 |
+| POST | `/api/badges/custom` | 新增自訂成就 |
+| DELETE | `/api/badges/custom/:id` | 刪除自訂成就（連帶刪除完成記錄） |
+| POST | `/api/badges/custom/:id/earn` | 標記自訂成就完成，自動入帳對應點數 |
 
-**回應格式**（陣列，每筆為一枚徽章）：
+**GET 回應格式**（陣列，系統徽章在前、自訂成就在後）：
 ```json
 [
   {
@@ -538,29 +601,67 @@ subjects ──┬── timetable_slots
     "name": "一週達人",
     "desc": "連續7天記錄讀書",
     "rarity": "uncommon",
+    "points": 25,
     "earned": true,
-    "earned_at": "2026-05-26 14:00:00"
+    "earned_at": "2026-05-26 14:00:00",
+    "custom": false
   },
   {
-    "id": "streak_14",
-    "category": "習慣",
-    "icon": "💪",
-    "name": "兩週衝刺",
-    "desc": "連續14天記錄讀書",
-    "rarity": "rare",
+    "id": "custom_3",
+    "_db_id": 3,
+    "category": "自訂",
+    "icon": "📗",
+    "name": "讀完一本課外書",
+    "desc": "完成閱讀一本非教科書",
+    "rarity": "custom",
+    "points": 40,
     "earned": false,
-    "earned_at": null
+    "earned_at": null,
+    "custom": true
   }
 ]
 ```
 
-**徽章自動頒發機制**：不透過此端點，而是在以下操作的 POST/PUT/PATCH 回應中附帶 `newBadges` 陣列：
+**系統徽章點數對照**（依稀有度，固定值）：
+
+| 稀有度 | points |
+|---|---|
+| 普通（common） | 10 |
+| 進階（uncommon） | 25 |
+| 稀有（rare） | 50 |
+| 傳說（epic） | 100 |
+
+**系統徽章自動頒發機制**：在以下操作的 POST/PUT/PATCH 回應中附帶 `newBadges` 陣列，同時寫入 `point_log`：
 - `POST /api/studylog` — 新增讀書記錄後檢查
 - `PUT /api/assignments/:id` — 作業標記完成後檢查
 - `PATCH /api/chapters/:id/progress`、`PATCH /api/chapters/progress/:id` — 章節進度完成後檢查
 - `POST /api/grades` — 新增成績後檢查
 
 前端 `api.js` 自動偵測回應中的 `newBadges` 欄位，觸發 `badge-earned` CustomEvent，`app.html` 監聽後顯示右下角 toast 通知。
+
+---
+
+### 獎勵商店 `/api/shop`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/shop/points` | 取得目前使用者點數餘額 |
+| GET | `/api/shop/items` | 取得使用者的許願池清單 |
+| POST | `/api/shop/items` | 新增獎勵願望（名稱、所需點數） |
+| DELETE | `/api/shop/items/:id` | 刪除許願池項目 |
+| POST | `/api/shop/redeem/:id` | 兌換獎勵（扣點、寫入兌換紀錄） |
+| GET | `/api/shop/history` | 取得兌換紀錄 |
+
+**POST `/api/shop/items` 請求體**
+```json
+{ "name": "週末電影之夜", "cost": 80 }
+```
+
+**POST `/api/shop/redeem/:id` 回應**
+```json
+{ "ok": true, "points": 150 }
+```
+> 點數不足時回傳 400 `{ "error": "點數不足" }`
 
 ---
 
@@ -597,6 +698,7 @@ subjects ──┬── timetable_slots
 | `/app#studylog` | 讀書時間 | `studylog.js` |
 | `/app#grades` | 成績紀錄 | `grades.js` |
 | `/app#badges` | 我的徽章 | `badges.js` |
+| `/app#shop` | 獎勵商店 | `shop.js` |
 | `/app#subjects` | 課程資訊 | `subjects.js` |
 | `/app#print` | 列印週計畫 | `print.js` |
 
@@ -686,12 +788,21 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 新增/編輯表單中有「從考試倒數選擇（選填）」下拉選單，選擇後自動填入考試名稱、日期、科目；也可略過選單直接手動輸入；選擇的考試記錄會以 `exam_id` FK 與成績連結
 
 #### 我的徽章（#badges）
-- 頁面頂部顯示已獲得徽章數 / 總數與進度條（百分比）
-- 以「習慣、努力、完成、成績」四類分區展示，每區一個 grid
-- **已解鎖**徽章：彩色邊框（依稀有度：普通=灰藍、進階=藍、稀有=紫、傳說=金），顯示徽章圖示、名稱、說明、稀有度標籤、獲得日期
-- **尚未解鎖**：灰階、半透明，顯示 🔒
+- 頁面頂部顯示已獲得徽章數 / 總數與進度條（百分比，計入自訂成就）
+- 以「習慣、努力、完成、成績」四系統類別分區展示，末尾為「自訂成就」區塊
+- **已解鎖**徽章：彩色邊框（依稀有度：普通=灰藍、進階=藍、稀有=紫、傳說=金、自訂=綠），顯示徽章圖示、名稱、說明、稀有度標籤、⭐ 點數、獲得日期
+- **尚未解鎖**系統徽章：灰階、半透明，顯示 🔒 與點數
+- **自訂成就**（未完成）：顯示「完成！」與「刪除」兩個按鈕；點「完成！」立即入帳點數
+- **新增自訂成就**：「＋ 新增自訂成就」展開表單，填入圖示（emoji）、名稱、說明、點數後送出；各帳號自訂成就完全隔離
 - 稀有度四級：普通（common）、進階（uncommon）、稀有（rare）、傳說（epic）
 - 新徽章解鎖時，右下角彈出 toast 通知（動畫入場，3.5 秒後自動消失），多枚徽章依序顯示（每 0.7 秒一枚）
+
+#### 獎勵商店（#shop）
+- 三個分頁 tab 切換：
+  - **✨ 許願池**：新增自訂獎勵（名稱＋所需點數），管理願望清單（可刪除）
+  - **🎁 櫃台**：顯示目前點數餘額；每張獎勵卡片含「兌換」按鈕，點數不足時按鈕灰化/禁用
+  - **📋 兌換紀錄**：顯示歷史兌換記錄（名稱、日期、扣點），最新在最前
+- 各帳號的許願池、點數、兌換紀錄完全獨立
 
 #### 課程資訊（#subjects）
 - **左欄**：科目列表，可新增（24色色票，6欄×4列格狀選色）、編輯、刪除
@@ -809,4 +920,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-05-26 的實作狀態（v2.3）。*
+*本文件反映截至 2026-05-30 的實作狀態（v2.4）。*

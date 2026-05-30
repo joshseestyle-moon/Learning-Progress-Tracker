@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.3　　最後更新：2026-05-26  
+> 版本：2.4　　最後更新：2026-05-30  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -670,7 +670,7 @@ CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 10 個遷移
+### 已實作的 12 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -852,6 +852,65 @@ db.exec(`
 
 > 徽章定義（名稱、圖示、說明、稀有度）存於 `badges/definitions.js`，不在 DB 中。  
 > 若要新增徽章，只需在 `definitions.js` 加入新條目並在 `checker.js` 加入判斷邏輯，不需要 DB migration。
+
+#### Migration 11：獎勵商店三張表（point_log、reward_items、redemption_log）
+
+**觸發條件**：`point_log` 資料表不存在
+
+**處理方式**：一次性建立三張表，並**回填**現有使用者的 `user_badges` 記錄至 `point_log`（確保舊帳號點數正確）
+
+```js
+const hasPointLog = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='point_log'").get();
+if (!hasPointLog) {
+  db.exec(`
+    CREATE TABLE point_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      delta   INTEGER NOT NULL,
+      reason  TEXT    NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE reward_items ( ... );
+    CREATE TABLE redemption_log ( ... );
+  `);
+  // 回填：既有徽章 → point_log 各對應一筆
+  const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
+  const existing = db.prepare('SELECT user_id, badge_id, earned_at FROM user_badges').all();
+  // ...批次 INSERT
+}
+```
+
+> `point_log.reason` 格式：`badge:<badge_id>`、`redeem:<item_id>`、`custom_badge:<id>`  
+> `redemption_log` 儲存兌換時的名稱快照，即使 `reward_items` 後來被刪除，紀錄仍完整。
+
+#### Migration 12：自訂成就兩張表（custom_badges、custom_badge_earned）
+
+**觸發條件**：每次啟動皆執行（使用 `CREATE TABLE IF NOT EXISTS`，冪等）
+
+```js
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custom_badges (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name    TEXT    NOT NULL,
+    icon    TEXT    NOT NULL DEFAULT '🏅',
+    desc    TEXT    NOT NULL DEFAULT '',
+    points  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS custom_badge_earned (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id)         ON DELETE CASCADE,
+    custom_badge_id INTEGER NOT NULL REFERENCES custom_badges(id) ON DELETE CASCADE,
+    earned_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, custom_badge_id)
+  );
+`);
+```
+
+> 自訂成就完全按 `user_id` 隔離，各帳號互不干擾。  
+> 完成時寫入 `custom_badge_earned` 並於 `point_log` 插入 `custom_badge:<id>` 記錄，  
+> 後端 `GET /api/badges` 將自訂成就附加在系統徽章之後一併回傳，`custom: true` 標記區分。
 
 ---
 
@@ -1127,7 +1186,12 @@ users
  ├─── grades             (user_id    → users.id    CASCADE)
  │     ├── [subject_id]  → subjects.id CASCADE
  │     └── [exam_id]     → exams.id   SET NULL
- └─── user_badges        (user_id → users.id CASCADE)
+ ├─── user_badges        (user_id → users.id CASCADE)
+ ├─── point_log          (user_id → users.id CASCADE)
+ ├─── reward_items       (user_id → users.id CASCADE)
+ ├─── redemption_log     (user_id → users.id CASCADE)
+ └─── custom_badges      (user_id → users.id CASCADE)
+       └─── custom_badge_earned (user_id + custom_badge_id → CASCADE)
 ```
 
 `[]` 表示 NOT NULL FK；`[x]` 表示可為 NULL 的 FK。
@@ -1441,6 +1505,11 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 | `idx_grades_user_subject` | `grades` | `(user_id, subject_id)` | 依科目篩選成績 |
 | `idx_chapter_progress_user` | `chapter_progress` | `(user_id)` | 讀書進度查詢（JOIN chapters） |
 | `idx_user_badges_user` | `user_badges` | `(user_id)` | 查詢使用者已獲得徽章列表 |
+| `idx_point_log_user` | `point_log` | `(user_id)` | 計算使用者點數餘額（SUM delta） |
+| `idx_reward_items_user` | `reward_items` | `(user_id)` | 查詢使用者許願池清單 |
+| `idx_redemption_log_user` | `redemption_log` | `(user_id)` | 查詢使用者兌換紀錄 |
+| `idx_custom_badges_user` | `custom_badges` | `(user_id)` | 查詢使用者自訂成就 |
+| `idx_custom_badge_earned_user` | `custom_badge_earned` | `(user_id)` | 查詢自訂成就完成狀態 |
 
 ---
 
@@ -1457,4 +1526,4 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 
 ---
 
-*本文件反映截至 2026-05-26 的實作狀態（v2.3）。*
+*本文件反映截至 2026-05-30 的實作狀態（v2.4）。*

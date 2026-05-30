@@ -20,3 +20,6 @@ node/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 本地筆記
+PROJECT_MEMORY.md

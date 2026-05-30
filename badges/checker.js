@@ -1,6 +1,8 @@
 const db     = require('../db/db');
 const BADGES = require('./definitions');
 
+const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
+
 function computeMaxStreak(sortedDates) {
   if (!sortedDates.length) return 0;
   let max = 1, cur = 1;
@@ -26,7 +28,10 @@ function checkBadges(userId) {
     db.prepare('INSERT OR IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)').run(userId, badgeId);
     earned.add(badgeId);
     const def = BADGES.find(b => b.id === badgeId);
-    if (def) newlyEarned.push(def);
+    if (def) {
+      newlyEarned.push(def);
+      db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(userId, RARITY_PTS[def.rarity] || 10, 'badge:' + badgeId);
+    }
   }
 
   // ── 習慣類 ──
