@@ -2,6 +2,7 @@ import { get, post, del, escHtml } from './api.js';
 
 const RARITY_LABEL = { common: '普通', uncommon: '進階', rare: '稀有', epic: '傳說', custom: '自訂' };
 const RARITY_COLOR = { common: 'var(--border)', uncommon: '#4a90d9', rare: '#9b59b6', epic: '#f39c12', custom: '#27ae60' };
+const ALL_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
 let _el = null;
 let _badges = [];
@@ -102,7 +103,7 @@ function renderAddForm() {
                    background:var(--bg);color:var(--text);font-size:.9rem;box-sizing:border-box">
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 100px;gap:.6rem;margin-bottom:.75rem">
+      <div style="display:grid;grid-template-columns:1fr 100px;gap:.6rem;margin-bottom:.6rem">
         <div>
           <div style="font-size:.72rem;color:var(--text3);margin-bottom:.3rem">說明（選填）</div>
           <input id="cb-desc" type="text" placeholder="描述這個成就的條件" maxlength="50"
@@ -115,6 +116,14 @@ function renderAddForm() {
             style="width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius-sm);
                    background:var(--bg);color:var(--text);font-size:.9rem;box-sizing:border-box">
         </div>
+      </div>
+      <div style="margin-bottom:.75rem">
+        <div style="font-size:.72rem;color:var(--text3);margin-bottom:.3rem">類別</div>
+        <select id="cb-category"
+          style="width:100%;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+                 background:var(--bg);color:var(--text);font-size:.9rem;box-sizing:border-box">
+          ${ALL_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
       </div>
       ${_formError ? `<div style="color:#e74c3c;font-size:.8rem;margin-bottom:.6rem">${escHtml(_formError)}</div>` : ''}
       <div style="display:flex;gap:.5rem">
@@ -131,6 +140,10 @@ function renderAddForm() {
 function renderPage() {
   const systemBadges = _badges.filter(b => !b.custom);
   const customBadges = _badges.filter(b => b.custom);
+  // Custom badges placed in system category sections (non-自訂)
+  const mixedCustom  = customBadges.filter(b => b.category !== '自訂');
+  // Custom badges that stay in the 自訂 section
+  const ownSectionCustom = customBadges.filter(b => b.category === '自訂');
 
   const earned = _badges.filter(b => b.earned);
   const total  = _badges.length;
@@ -159,7 +172,10 @@ function renderPage() {
       </div>
 
       ${categories.map(cat => {
-        const catBadges = systemBadges.filter(b => b.category === cat);
+        const catBadges = [
+          ...systemBadges.filter(b => b.category === cat),
+          ...mixedCustom.filter(b => b.category === cat),
+        ];
         return `
           <div style="margin-bottom:1.5rem">
             <div style="font-size:.78rem;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:.75rem;padding-left:.1rem">${escHtml(cat)}類成就</div>
@@ -172,9 +188,9 @@ function renderPage() {
       <div style="margin-bottom:1.5rem">
         <div style="font-size:.78rem;font-weight:700;letter-spacing:.08em;color:#27ae60;text-transform:uppercase;margin-bottom:.75rem;padding-left:.1rem">自訂成就</div>
         <div id="custom-form-area" style="margin-bottom:.75rem">${renderAddForm()}</div>
-        ${customBadges.length > 0
+        ${ownSectionCustom.length > 0
           ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.75rem">
-               ${customBadges.map(b => badgeCard(b)).join('')}
+               ${ownSectionCustom.map(b => badgeCard(b)).join('')}
              </div>`
           : `<div style="color:var(--text3);font-size:.85rem;padding:.5rem .1rem">還沒有自訂成就，從上方新增第一個吧！</div>`
         }
@@ -214,10 +230,11 @@ window.badgeHideForm = function() {
 };
 
 window.badgeAddCustom = async function() {
-  const name   = (document.getElementById('cb-name')?.value || '').trim();
-  const icon   = (document.getElementById('cb-icon')?.value || '🏅').trim() || '🏅';
-  const desc   = (document.getElementById('cb-desc')?.value || '').trim();
-  const points = parseInt(document.getElementById('cb-points')?.value) || 0;
+  const name     = (document.getElementById('cb-name')?.value || '').trim();
+  const icon     = (document.getElementById('cb-icon')?.value || '🏅').trim() || '🏅';
+  const desc     = (document.getElementById('cb-desc')?.value || '').trim();
+  const points   = parseInt(document.getElementById('cb-points')?.value) || 0;
+  const category = document.getElementById('cb-category')?.value || '自訂';
 
   if (!name) {
     _formError = '請輸入成就名稱';
@@ -227,7 +244,7 @@ window.badgeAddCustom = async function() {
   }
 
   try {
-    await post('/badges/custom', { name, icon, desc, points });
+    await post('/badges/custom', { name, icon, desc, points, category });
     _showForm = false;
     _formError = '';
     await load();

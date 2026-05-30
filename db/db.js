@@ -244,6 +244,12 @@ function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS idx_custom_badge_earned_user ON custom_badge_earned(user_id);
   `);
 
+  // Migration 13: add category column to custom_badges
+  const cbCols = db.pragma('table_info(custom_badges)').map(c => c.name);
+  if (!cbCols.includes('category')) {
+    db.exec("ALTER TABLE custom_badges ADD COLUMN category TEXT NOT NULL DEFAULT '自訂'");
+  }
+
   return db;
 }
 

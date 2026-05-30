@@ -4,6 +4,7 @@ const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
 
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
+const VALID_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
 // ── System badges ──────────────────────────────────────────────
 router.get('/', userCtx, (req, res) => {
@@ -32,7 +33,7 @@ router.get('/', userCtx, (req, res) => {
   const custom = customDefs.map(b => ({
     id:        'custom_' + b.id,
     _db_id:    b.id,
-    category:  '自訂',
+    category:  b.category || '自訂',
     icon:      b.icon,
     name:      b.name,
     desc:      b.desc,
@@ -48,17 +49,18 @@ router.get('/', userCtx, (req, res) => {
 
 // ── Custom badge CRUD ──────────────────────────────────────────
 router.post('/custom', userCtx, (req, res) => {
-  const name   = (req.body.name || '').trim();
-  const icon   = (req.body.icon || '🏅').trim() || '🏅';
-  const desc   = (req.body.desc || '').trim();
-  const points = Math.max(0, parseInt(req.body.points) || 0);
+  const name     = (req.body.name || '').trim();
+  const icon     = (req.body.icon || '🏅').trim() || '🏅';
+  const desc     = (req.body.desc || '').trim();
+  const points   = Math.max(0, parseInt(req.body.points) || 0);
+  const category = VALID_CATEGORIES.includes(req.body.category) ? req.body.category : '自訂';
   if (!name) return res.status(400).json({ error: '請輸入成就名稱' });
 
   const result = db.prepare(
-    'INSERT INTO custom_badges (user_id, name, icon, desc, points) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.userId, name, icon, desc, points);
+    'INSERT INTO custom_badges (user_id, name, icon, desc, points, category) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(req.userId, name, icon, desc, points, category);
 
-  res.json({ id: result.lastInsertRowid, user_id: req.userId, name, icon, desc, points });
+  res.json({ id: result.lastInsertRowid, user_id: req.userId, name, icon, desc, points, category });
 });
 
 router.delete('/custom/:id', userCtx, (req, res) => {
