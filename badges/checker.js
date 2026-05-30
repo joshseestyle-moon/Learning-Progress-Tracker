@@ -23,8 +23,15 @@ function checkBadges(userId) {
 
   const newlyEarned = [];
 
+  const today = new Date().toISOString().slice(0, 10);
+
   function award(badgeId) {
     if (earned.has(badgeId)) return;
+    // Once exchanged today, cannot re-earn until tomorrow
+    const exchangedToday = db.prepare(
+      "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at) = ?"
+    ).get(userId, badgeId, today);
+    if (exchangedToday) return;
     db.prepare('INSERT OR IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)').run(userId, badgeId);
     earned.add(badgeId);
     const def = BADGES.find(b => b.id === badgeId);

@@ -93,6 +93,12 @@ router.post('/custom/:id/earn', userCtx, (req, res) => {
   ).get(req.userId, req.params.id);
   if (already) return res.status(400).json({ error: '已完成此成就' });
 
+  const today = new Date().toISOString().slice(0, 10);
+  const exchangedToday = db.prepare(
+    "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at) = ?"
+  ).get(req.userId, 'custom_' + req.params.id, today);
+  if (exchangedToday) return res.status(400).json({ error: '今天已兌換過此成就，明天才能再次達成' });
+
   db.prepare('INSERT INTO custom_badge_earned (user_id, custom_badge_id) VALUES (?, ?)').run(req.userId, req.params.id);
 
   res.json({ ok: true, icon: row.icon, name: row.name });
