@@ -275,9 +275,10 @@ let _db = openAndMigrate();
 // Wrapper — all routes hold a reference to this object.
 // reinitialize() hot-swaps _db so subsequent calls use the new connection.
 const dbWrapper = {
-  prepare: (sql) => _db.prepare(sql),
-  exec:    (sql) => _db.exec(sql),
-  pragma:  (key) => _db.pragma(key),
+  prepare:     (sql) => _db.prepare(sql),
+  exec:        (sql) => _db.exec(sql),
+  pragma:      (key) => _db.pragma(key),
+  transaction: (fn)  => _db.transaction(fn),
   get DB_PATH() { return DB_PATH; },
   reinitialize(sourcePath) {
     try { _db.pragma('wal_checkpoint(TRUNCATE)'); } catch (_) {}
