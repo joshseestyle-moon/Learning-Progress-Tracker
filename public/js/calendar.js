@@ -1,4 +1,5 @@
 import { get, post, put, del, escHtml, fmtDate, today } from './api.js';
+import { t, getLang } from './i18n.js';
 
 let currentYear, currentMonth;
 let subjects = [];
@@ -31,7 +32,7 @@ async function renderMonth(el) {
     (byDate[s.scheduled_date] = byDate[s.scheduled_date] || []).push({
       ...s,
       _type: 'chapter',
-      title: `${s.type === 'preview' ? '預習' : '複習'}：${s.chapter_title}`,
+      title: `${t(s.type === 'preview' ? 'chip.preview' : 'chip.review')}：${s.chapter_title}`,
     });
   }
 
@@ -41,10 +42,11 @@ async function renderMonth(el) {
   const totalDays = lastDay.getDate();
   const todayStr = today();
 
-  const monthName = new Date(currentYear, currentMonth).toLocaleDateString('zh-TW', { year:'numeric', month:'long' });
+  const LOCALE_MAP = { 'zh-TW': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP' };
+  const locale = LOCALE_MAP[getLang()] || 'zh-TW';
+  const monthName = new Date(currentYear, currentMonth).toLocaleDateString(locale, { year:'numeric', month:'long' });
 
   let cells = '';
-  // Empty cells before month start
   for (let i = 0; i < startDow; i++) cells += '<div class="cal-cell other-month"></div>';
 
   for (let d = 1; d <= totalDays; d++) {
@@ -59,19 +61,21 @@ async function renderMonth(el) {
           const label = `${icon} ${ev.subject_name}・${ev._type === 'chapter' ? ev.chapter_title : ev.title}`;
           return `<div class="cal-dot" style="background:${ev.subject_color}" title="${escHtml(label)}">${escHtml(label)}</div>`;
         }).join('')}
-        ${events.length > 3 ? `<div class="text-xs text-muted">+${events.length-3} 更多</div>` : ''}
+        ${events.length > 3 ? `<div class="text-xs text-muted">${t('cal.moreEvents', { n: events.length-3 })}</div>` : ''}
       </div>`;
   }
 
+  const dayHeaders = [0,1,2,3,4,5,6].map(i => `<div class="cal-day-header">${t('cal.calDay.' + i)}</div>`).join('');
+
   el.innerHTML = `
     <div class="cal-header">
-      <button class="btn btn-ghost btn-sm" id="cal-prev">← 上月</button>
+      <button class="btn btn-ghost btn-sm" id="cal-prev">${t('cal.prev')}</button>
       <strong style="font-size:1.05rem;min-width:130px;text-align:center;">${monthName}</strong>
-      <button class="btn btn-ghost btn-sm" id="cal-next">下月 →</button>
+      <button class="btn btn-ghost btn-sm" id="cal-next">${t('cal.next')}</button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="cal-grid">
-        ${['一','二','三','四','五','六','日'].map(d=>`<div class="cal-day-header">${d}</div>`).join('')}
+        ${dayHeaders}
         ${cells}
       </div>
     </div>
@@ -100,23 +104,23 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
         <div class="card-title" style="margin:0;">${fmtDate(date)}</div>
-        <button class="btn btn-primary btn-sm" id="cal-add-btn">+ 新增作業</button>
+        <button class="btn btn-primary btn-sm" id="cal-add-btn">${t('cal.addAssignment')}</button>
       </div>
       ${events.length ? events.map(ev => `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);">
           <div>
             <span class="badge" style="background:${ev.subject_color};margin-right:.4rem">${escHtml(ev.subject_name)}</span>
-            ${ ev._type === 'exam'     ? '<span class="chip">考試</span>'
-             : ev._type === 'chapter'  ? `<span class="chip" style="color:var(--accent)">${ev.type==='preview'?'預習':'複習'}</span>`
-             : '<span class="chip">作業</span>'}
+            ${ ev._type === 'exam'    ? `<span class="chip">${t('chip.exam')}</span>`
+             : ev._type === 'chapter' ? `<span class="chip" style="color:var(--accent)">${ev.type==='preview' ? t('chip.preview') : t('chip.review')}</span>`
+             : `<span class="chip">${t('chip.assignment')}</span>`}
             <span style="font-size:.9rem;margin-left:.4rem;">${escHtml(ev.title)}</span>
           </div>
           ${ev._type === 'assignment' ? `
             <div style="display:flex;gap:.5rem;">
-              <button class="btn btn-ghost btn-sm" onclick="toggleAssignment(${ev.id}, ${ev.is_done})">${ev.is_done?'↩ 取消':'✓ 完成'}</button>
+              <button class="btn btn-ghost btn-sm" onclick="toggleAssignment(${ev.id}, ${ev.is_done})">${ev.is_done ? t('btn.undone') : t('btn.done')}</button>
               <button class="btn btn-danger btn-sm" onclick="deleteAssignment(${ev.id})">✕</button>
             </div>` : ''}
-        </div>`).join('') : '<div class="text-muted text-sm">這天沒有事件</div>'}
+        </div>`).join('') : `<div class="text-muted text-sm">${t('cal.noEvents')}</div>`}
     </div>`;
 
   detail.querySelector('#cal-add-btn').onclick = () => {
@@ -128,14 +132,13 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
     modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
   };
 
-  // Global helpers for inline buttons
   window.toggleAssignment = async (id, isDone) => {
     const a = assignments.find(x => x.id === id);
     await import('./api.js').then(m => m.put('/assignments/' + id, { ...a, is_done: !isDone }));
     await renderMonth(el);
   };
   window.deleteAssignment = async (id) => {
-    if (!confirm('確定刪除？')) return;
+    if (!confirm(t('confirm.deleteAssignment'))) return;
     await import('./api.js').then(m => m.del('/assignments/' + id));
     await renderMonth(el);
   };
@@ -144,28 +147,28 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
 function buildModal(date) {
   return `
     <div class="modal-box">
-      <div class="modal-title">新增作業</div>
+      <div class="modal-title">${t('modal.addAssignment')}</div>
       <div class="form-group">
-        <label class="form-label">科目</label>
+        <label class="form-label">${t('label.subject')}</label>
         <select id="cal-subject" class="form-select">
           ${subjects.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">作業名稱</label>
-        <input id="cal-title" class="form-input" placeholder="例：第三章習題">
+        <label class="form-label">${t('label.assignmentName')}</label>
+        <input id="cal-title" class="form-input" placeholder="${t('label.assignmentPlaceholder')}">
       </div>
       <div class="form-group">
-        <label class="form-label">截止日期</label>
+        <label class="form-label">${t('label.dueDate')}</label>
         <input id="cal-date" type="date" class="form-input" value="${date||''}">
       </div>
       <div class="form-group">
-        <label class="form-label">說明（選填）</label>
+        <label class="form-label">${t('label.descOptional')}</label>
         <textarea id="cal-desc" class="form-input form-textarea"></textarea>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" id="cal-cancel">取消</button>
-        <button class="btn btn-primary" id="cal-save">儲存</button>
+        <button class="btn btn-ghost" id="cal-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="cal-save">${t('btn.save')}</button>
       </div>
     </div>`;
 }
@@ -178,7 +181,7 @@ async function saveAssignment(el, date) {
     due_date:   modal.querySelector('#cal-date').value,
     description:modal.querySelector('#cal-desc').value.trim() || null,
   };
-  if (!body.title || !body.due_date) return alert('請填寫名稱與日期');
+  if (!body.title || !body.due_date) return alert(t('alert.fillNameDate'));
   await post('/assignments', body);
   modal.classList.add('hidden');
   await renderMonth(el);

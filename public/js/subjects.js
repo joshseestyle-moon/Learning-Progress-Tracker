@@ -1,17 +1,12 @@
 import { get, post, put, del, patch, escHtml } from './api.js';
+import { t } from './i18n.js';
 
 const PRESET_COLORS = [
-  // 藍
   '#4f6ef7','#3b82f6','#0ea5e9','#06b6d4',
-  // 綠 & 青
   '#14b8a6','#10b981','#22c55e','#84cc16',
-  // 黃 & 橘
   '#eab308','#f59e0b','#f97316','#fb923c',
-  // 紅 & 粉
   '#ef4444','#e04040','#f43f5e','#ec4899',
-  // 紫 & 靛
   '#a855f7','#8b5cf6','#6366f1','#7c3aed',
-  // 深藍 & 深綠 & 深紅 & 深紫
   '#0891b2','#059669','#dc2626','#9333ea',
 ];
 
@@ -41,8 +36,8 @@ function buildPage(subjects, chapters) {
       <div>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <div class="card-title" style="margin:0;">科目列表</div>
-            <button class="btn btn-primary btn-sm" id="sub-add-btn">+ 新增科目</button>
+            <div class="card-title" style="margin:0;">${t('sub.subjectList')}</div>
+            <button class="btn btn-primary btn-sm" id="sub-add-btn">${t('sub.add')}</button>
           </div>
 
           ${subjects.length ? subjects.map(s => `
@@ -55,14 +50,14 @@ function buildPage(subjects, chapters) {
               <div style="display:flex;align-items:center;gap:.6rem;">
                 <span style="width:14px;height:14px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0;"></span>
                 <span style="font-weight:600;">${escHtml(s.name)}</span>
-                <span class="text-xs text-muted">(${(bySubject[s.id]||[]).length} 章節)</span>
+                <span class="text-xs text-muted">${t('sub.chapterCount', { n: (bySubject[s.id]||[]).length })}</span>
               </div>
               <div style="display:flex;gap:.4rem;">
-                <button class="btn btn-ghost btn-sm sub-edit-btn" data-id="${s.id}">編輯</button>
+                <button class="btn btn-ghost btn-sm sub-edit-btn" data-id="${s.id}">${t('btn.edit')}</button>
                 <button class="btn btn-danger btn-sm sub-del-btn" data-id="${s.id}">✕</button>
               </div>
             </div>`).join('') :
-            '<div class="empty-state" style="padding:1.5rem;"><div class="icon">📚</div><p>尚未新增科目</p></div>'}
+            `<div class="empty-state" style="padding:1.5rem;"><div class="icon">📚</div><p>${t('sub.noSubjects')}</p></div>`}
         </div>
       </div>
 
@@ -71,7 +66,7 @@ function buildPage(subjects, chapters) {
         <div class="card">
           <div class="empty-state">
             <div class="icon">👈</div>
-            <p>點選左方科目來管理章節</p>
+            <p>${t('sub.clickToManage')}</p>
           </div>
         </div>
       </div>
@@ -87,13 +82,13 @@ function buildSubjectModal(s) {
   s = s || {};
   return `
     <div class="modal-box">
-      <div class="modal-title">${s.id ? '編輯科目' : '新增科目'}</div>
+      <div class="modal-title">${s.id ? t('sub.editSubject') : t('sub.addSubject')}</div>
       <div class="form-group">
-        <label class="form-label">科目名稱</label>
-        <input id="sm-name" class="form-input" value="${escHtml(s.name||'')}" placeholder="例：數學、英文、物理">
+        <label class="form-label">${t('label.subjectName')}</label>
+        <input id="sm-name" class="form-input" value="${escHtml(s.name||'')}" placeholder="${t('label.subjectPlaceholder')}">
       </div>
       <div class="form-group">
-        <label class="form-label">代表顏色</label>
+        <label class="form-label">${t('label.color')}</label>
         <div style="display:grid;grid-template-columns:repeat(6,32px);gap:.4rem;" id="sm-colors">
           ${PRESET_COLORS.map(c => `
             <div class="sm-color-swatch" data-color="${c}" style="
@@ -106,8 +101,8 @@ function buildSubjectModal(s) {
         <input id="sm-color-val" type="hidden" value="${s.color||PRESET_COLORS[0]}">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" id="sm-cancel">取消</button>
-        <button class="btn btn-primary" id="sm-save">儲存</button>
+        <button class="btn btn-ghost" id="sm-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="sm-save">${t('btn.save')}</button>
       </div>
     </div>`;
 }
@@ -119,11 +114,11 @@ function buildChapterPanel(subject, chapters) {
         <div>
           <div class="card-title" style="margin:0;display:flex;align-items:center;gap:.5rem;">
             <span style="width:12px;height:12px;border-radius:50%;background:${subject.color};display:inline-block;"></span>
-            ${escHtml(subject.name)} 的章節
+            ${t('sub.chapters', { name: escHtml(subject.name) })}
           </div>
-          <div class="text-xs text-muted mt-1">拖曳可調整順序，或使用 ↑↓ 按鈕</div>
+          <div class="text-xs text-muted mt-1">${t('sub.sortHint')}</div>
         </div>
-        <button class="btn btn-primary btn-sm" id="ch-add-btn">+ 新增章節</button>
+        <button class="btn btn-primary btn-sm" id="ch-add-btn">${t('sub.addChapter')}</button>
       </div>
 
       <div id="ch-list">
@@ -139,11 +134,11 @@ function buildChapterPanel(subject, chapters) {
             <div style="display:flex;gap:.3rem;">
               <button class="btn btn-ghost btn-sm ch-up-btn" data-id="${c.id}" data-idx="${i}" ${i===0?'disabled':''}>↑</button>
               <button class="btn btn-ghost btn-sm ch-dn-btn" data-id="${c.id}" data-idx="${i}" ${i===chapters.length-1?'disabled':''}>↓</button>
-              <button class="btn btn-ghost btn-sm ch-rename-btn" data-id="${c.id}" data-title="${escHtml(c.title)}">改名</button>
+              <button class="btn btn-ghost btn-sm ch-rename-btn" data-id="${c.id}" data-title="${escHtml(c.title)}">${t('btn.edit')}</button>
               <button class="btn btn-danger btn-sm ch-del-btn" data-id="${c.id}">✕</button>
             </div>
           </div>`).join('') :
-          '<div class="text-muted text-sm">尚未新增章節，點右上「+ 新增章節」開始</div>'}
+          `<div class="text-muted text-sm">${t('sub.noChapters')}</div>`}
       </div>
     </div>`;
 }
@@ -153,7 +148,6 @@ function openSubjectModal(el, subject, subjects, chapters) {
   modal.innerHTML = buildSubjectModal(subject);
   modal.classList.remove('hidden');
 
-  // Color swatch selection
   modal.querySelectorAll('.sm-color-swatch').forEach(swatch => {
     swatch.onclick = () => {
       modal.querySelectorAll('.sm-color-swatch').forEach(s => {
@@ -176,7 +170,7 @@ async function saveSubject(el, existing) {
   const modal = el.querySelector('#sub-modal');
   const name  = modal.querySelector('#sm-name').value.trim();
   const color = modal.querySelector('#sm-color-val').value;
-  if (!name) return alert('請輸入科目名稱');
+  if (!name) return alert(t('alert.enterSubjectName'));
   if (existing) await put('/subjects/' + existing.id, { name, color });
   else          await post('/subjects', { name, color });
   modal.classList.add('hidden');
@@ -184,10 +178,8 @@ async function saveSubject(el, existing) {
 }
 
 function attachEvents(el, subjects, chapters) {
-  // Add subject
   el.querySelector('#sub-add-btn').onclick = () => openSubjectModal(el, null, subjects, chapters);
 
-  // Edit / delete subject
   el.querySelectorAll('.sub-edit-btn').forEach(btn => {
     btn.onclick = e => {
       e.stopPropagation();
@@ -198,13 +190,12 @@ function attachEvents(el, subjects, chapters) {
   el.querySelectorAll('.sub-del-btn').forEach(btn => {
     btn.onclick = async e => {
       e.stopPropagation();
-      if (!confirm('刪除科目會同時刪除所有相關章節、作業、考試等資料，確定嗎？')) return;
+      if (!confirm(t('confirm.deleteSubject'))) return;
       await del('/subjects/' + btn.dataset.id);
       await refresh(el);
     };
   });
 
-  // Click subject row → show chapter panel
   el.querySelectorAll('.subject-row').forEach(row => {
     row.onclick = () => {
       el.querySelectorAll('.subject-row').forEach(r => {
@@ -226,35 +217,31 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
   const panel = el.querySelector('#chapter-panel');
   panel.innerHTML = buildChapterPanel(subject, chs);
 
-  // Add chapter
   panel.querySelector('#ch-add-btn').onclick = async () => {
-    const title = prompt('章節名稱：');
+    const title = prompt(t('prompt.addChapter'));
     if (!title || !title.trim()) return;
     const maxOrder = chs.length ? Math.max(...chs.map(c => c.sort_order)) + 1 : 0;
     await post('/chapters', { subject_id: subject.id, title: title.trim(), sort_order: maxOrder });
     await refresh(el);
   };
 
-  // Rename
   panel.querySelectorAll('.ch-rename-btn').forEach(btn => {
     btn.onclick = async () => {
-      const newTitle = prompt('新章節名稱：', btn.dataset.title);
+      const newTitle = prompt(t('prompt.renameChapter'), btn.dataset.title);
       if (!newTitle || !newTitle.trim()) return;
       await put('/chapters/' + btn.dataset.id, { title: newTitle.trim() });
       await refresh(el);
     };
   });
 
-  // Delete
   panel.querySelectorAll('.ch-del-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('確定刪除此章節？')) return;
+      if (!confirm(t('confirm.deleteChapter'))) return;
       await del('/chapters/' + btn.dataset.id);
       await refresh(el);
     };
   });
 
-  // Move up/down
   panel.querySelectorAll('.ch-up-btn').forEach(btn => {
     btn.onclick = async () => {
       const idx = +btn.dataset.idx;

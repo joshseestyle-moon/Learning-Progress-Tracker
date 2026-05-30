@@ -1,4 +1,5 @@
 import { get, post, patch, escHtml, fmtDate, today } from './api.js';
+import { t } from './i18n.js';
 
 let _el = null;
 
@@ -22,7 +23,7 @@ export async function render(el) {
       get('/chapters'),
     ]);
   } catch (e) {
-    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
 
@@ -52,41 +53,44 @@ export async function render(el) {
 
       <!-- Today's timetable -->
       <div class="card">
-        <div class="card-title">📅 今日課表</div>
-        ${timetableCard(todaySlots, '今天沒有課程')}
+        <div class="card-title">${t('card.todaySchedule')}</div>
+        ${timetableCard(todaySlots, t('empty.todaySchedule'))}
       </div>
 
       <!-- Tomorrow's timetable -->
       <div class="card">
-        <div class="card-title">📅 明日課表</div>
-        ${timetableCard(tomorrowSlots, '明天沒有課程')}
+        <div class="card-title">${t('card.tomorrowSchedule')}</div>
+        ${timetableCard(tomorrowSlots, t('empty.tomorrowSchedule'))}
       </div>
 
       <!-- Today's study progress -->
       <div class="card">
-        <div class="card-title">📚 今日讀書進度</div>
-        ${studyCard(todayProgress, '今日沒有排定的讀書計畫')}
+        <div class="card-title">${t('card.todayStudy')}</div>
+        ${studyCard(todayProgress, t('empty.todayStudy'))}
       </div>
 
       <!-- Tomorrow's study progress -->
       <div class="card">
-        <div class="card-title">📚 明日讀書進度</div>
-        ${studyCard(tomorrowProgress, '明日沒有排定的讀書計畫')}
+        <div class="card-title">${t('card.tomorrowStudy')}</div>
+        ${studyCard(tomorrowProgress, t('empty.tomorrowStudy'))}
       </div>
 
       <!-- Overdue study progress -->
       <div class="card">
-        <div class="card-title">⚠️ 待完成讀書進度</div>
+        <div class="card-title">${t('card.overdue')}</div>
         ${overdueCard(overdueProgress)}
       </div>
 
       <!-- Exam countdown -->
       <div class="card">
-        <div class="card-title">⏰ 考試倒數</div>
+        <div class="card-title">${t('card.examCountdown')}</div>
         ${exams.length ? exams.map(e => {
           const d = e.days_left;
           const urgency = d <= 3 ? 'urgent' : d <= 7 ? 'soon' : 'ok';
-          const typeLabel = { quiz:'小考', segment:'段考', midterm:'期中考', final:'期末考', mock:'模擬考' }[e.exam_type] || e.exam_type;
+          const typeLabel = {
+            quiz: t('enum.examType.quiz'), segment: t('enum.examType.segment'),
+            midterm: t('enum.examType.midterm'), final: t('enum.examType.final'), mock: t('enum.examType.mock'),
+          }[e.exam_type] || e.exam_type;
           const prog = progressMap[e.subject_id];
           const progressBar = prog && prog.total > 0 ? (() => {
             const prevPct = Math.round(prog.prevDone / prog.total * 100);
@@ -94,14 +98,14 @@ export async function render(el) {
             return `
             <div style="margin-top:.45rem;display:flex;flex-direction:column;gap:4px;">
               <div style="display:flex;align-items:center;gap:.5rem;">
-                <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">預習</span>
+                <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">${t('dash.preview')}</span>
                 <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
                   <div style="height:100%;width:${prevPct}%;background:var(--accent);border-radius:999px;"></div>
                 </div>
                 <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.prevDone}/${prog.total}</span>
               </div>
               <div style="display:flex;align-items:center;gap:.5rem;">
-                <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">複習</span>
+                <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">${t('dash.review')}</span>
                 <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
                   <div style="height:100%;width:${revPct}%;background:var(--success);border-radius:999px;"></div>
                 </div>
@@ -116,12 +120,12 @@ export async function render(el) {
                 <span class="badge" style="background:${e.subject_color};margin-right:.4rem">${escHtml(e.subject_name)}</span>
                 <span class="chip">${typeLabel}</span>
               </div>
-              <span class="countdown-pill ${urgency}">${d <= 0 ? '今天！' : d + ' 天後'}</span>
+              <span class="countdown-pill ${urgency}">${d <= 0 ? t('dash.today') : t('dash.daysLeft', { n: d })}</span>
             </div>
             <div style="font-size:.85rem;margin-top:.25rem;color:var(--text2);">${escHtml(e.title)} · ${fmtDate(e.exam_date)}</div>
             ${progressBar}
           </div>`;
-        }).join('') : '<div class="text-muted text-sm">近期沒有考試</div>'}
+        }).join('') : `<div class="text-muted text-sm">${t('empty.exams')}</div>`}
       </div>
 
     </div>
@@ -132,23 +136,23 @@ function timetableCard(slots, emptyMsg) {
   if (!slots.length) return `<div class="text-muted text-sm">${emptyMsg}</div>`;
   return slots.map(s => `
     <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem;">
-      <span style="font-size:.78rem;color:var(--text2);min-width:50px;">第${s.period}節</span>
+      <span style="font-size:.78rem;color:var(--text2);min-width:50px;">${t('tt.period', { n: s.period })}</span>
       <span class="badge" style="background:${s.subject_color}">${escHtml(s.subject_name)}</span>
     </div>`).join('');
 }
 
 function overdueCard(items) {
-  if (!items.length) return `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
+  if (!items.length) return `<div style="font-size:.85rem;color:var(--success);">${t('empty.overdue')}</div>`;
   return items.map(p => {
     const isPreview = p.type === 'preview';
-    const typeLabel = isPreview ? '預習' : '複習';
+    const typeLabel = isPreview ? t('dash.preview') : t('dash.review');
     const daysLate  = Math.floor((new Date(today() + 'T00:00:00') - new Date(p.scheduled_date + 'T00:00:00')) / 86400000);
     const lateColor = daysLate >= 7 ? 'var(--danger)' : '#e67e22';
     return `
     <div data-prog-id="${p.id}" data-subject-id="${p.subject_id}" data-chapter-id="${p.chapter_id}" data-is-done="0"
          style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;
                 border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;">
-      <button onclick="dashToggleProgress('${p.id}', true)" title="標記為完成"
+      <button onclick="dashToggleProgress('${p.id}', true)" title="${t('btn.done')}"
         style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
                border:2px solid ${lateColor};background:transparent;display:flex;align-items:center;
                justify-content:center;font-size:.65rem;color:${lateColor};cursor:pointer;padding:0;">!</button>
@@ -158,7 +162,7 @@ function overdueCard(items) {
           <span style="font-size:.85rem;font-weight:600;">${escHtml(p.chapter_title)}</span>
           <span style="font-size:.7rem;padding:.1rem .4rem;border-radius:999px;border:1.5px solid ${lateColor};color:${lateColor};">${typeLabel}</span>
         </div>
-        <div style="font-size:.72rem;color:${lateColor};margin-top:.2rem;">應完成：${fmtDate(p.scheduled_date)}（已逾 ${daysLate} 天）</div>
+        <div style="font-size:.72rem;color:${lateColor};margin-top:.2rem;">${t('dash.dueDate', { date: fmtDate(p.scheduled_date), days: daysLate })}</div>
       </div>
     </div>`;
   }).join('');
@@ -168,12 +172,12 @@ function studyCard(items, emptyMsg) {
   if (!items.length) return `<div class="text-muted text-sm">${emptyMsg}</div>`;
   return items.map(p => {
     const isPreview = p.type === 'preview';
-    const typeLabel = isPreview ? '預習' : '複習';
+    const typeLabel = isPreview ? t('dash.preview') : t('dash.review');
     const color     = isPreview ? 'var(--accent)' : 'var(--success)';
     return `
     <div data-prog-id="${p.id}" data-subject-id="${p.subject_id}" data-chapter-id="${p.chapter_id}" data-is-done="${p.is_done ? '1' : '0'}"
          style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
-      <button onclick="dashToggleProgress('${p.id}', false)" title="${p.is_done ? '標記為未完成' : '標記為完成'}"
+      <button onclick="dashToggleProgress('${p.id}', false)" title="${p.is_done ? t('btn.undone') : t('btn.done')}"
         style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
                border:2px solid ${color};background:${p.is_done ? color : 'transparent'};
                display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;
@@ -200,14 +204,14 @@ function openDashTimeModal(onSave, onSkip) {
   if (!modal) return onSkip();
   modal.innerHTML = `
     <div class="modal-box" style="max-width:320px;">
-      <div class="modal-title">記錄學習時間</div>
+      <div class="modal-title">${t('timeModal.title')}</div>
       <div class="form-group">
-        <label class="form-label">花了多少分鐘？</label>
-        <input id="dtm-minutes" type="number" class="form-input" min="1" max="600" placeholder="例：30">
+        <label class="form-label">${t('timeModal.label')}</label>
+        <input id="dtm-minutes" type="number" class="form-input" min="1" max="600" placeholder="${t('timeModal.placeholder')}">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" id="dtm-skip">略過</button>
-        <button class="btn btn-primary" id="dtm-save">記錄</button>
+        <button class="btn btn-ghost" id="dtm-skip">${t('timeModal.skip')}</button>
+        <button class="btn btn-primary" id="dtm-save">${t('timeModal.save')}</button>
       </div>
     </div>`;
   modal.classList.remove('hidden');
@@ -245,7 +249,7 @@ window.dashToggleProgress = async function(progressId, removeOnDone) {
           const parent = row.parentElement;
           row.remove();
           if (parent && !parent.querySelector('[data-prog-id]')) {
-            parent.innerHTML = `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
+            parent.innerHTML = `<div style="font-size:.85rem;color:var(--success);">${t('empty.overdue')}</div>`;
           }
         }, 260);
       } else {
@@ -276,6 +280,6 @@ window.dashToggleProgress = async function(progressId, removeOnDone) {
   } catch (e) {
     btn.disabled = false;
     btn.style.opacity = '';
-    alert('更新失敗：' + e.message);
+    alert(t('alert.saveFailed', { msg: e.message }));
   }
 };

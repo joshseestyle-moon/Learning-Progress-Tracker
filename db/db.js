@@ -267,6 +267,12 @@ function openAndMigrate() {
     `);
   }
 
+  // Migration 15: add lang preference to users
+  const userCols = db.pragma('table_info(users)').map(c => c.name);
+  if (!userCols.includes('lang')) {
+    db.exec("ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'zh-TW'");
+  }
+
   return db;
 }
 

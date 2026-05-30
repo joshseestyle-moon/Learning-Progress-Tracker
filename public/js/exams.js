@@ -1,7 +1,14 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
+import { t } from './i18n.js';
 
-const TYPE_LABEL = { quiz:'小考', segment:'段考', midterm:'期中考', final:'期末考', mock:'模擬考' };
 let subjects = [];
+
+function TYPE_LABEL() {
+  return {
+    quiz: t('enum.examType.quiz'), segment: t('enum.examType.segment'),
+    midterm: t('enum.examType.midterm'), final: t('enum.examType.final'), mock: t('enum.examType.mock'),
+  };
+}
 
 export async function render(el) {
   subjects = await get('/subjects');
@@ -35,27 +42,27 @@ function buildPage(exams, progressMap) {
   return `
     <div style="display:flex;justify-content:space-between;margin-bottom:1.25rem;">
       <div></div>
-      <button class="btn btn-primary" id="exam-add-btn">+ 新增考試</button>
+      <button class="btn btn-primary" id="exam-add-btn">${t('exam.add')}</button>
     </div>
 
     <div class="card" style="margin-bottom:1.25rem;">
-      <div class="card-title">即將到來 (${upcoming.length})</div>
+      <div class="card-title">${t('exam.upcoming', { n: upcoming.length })}</div>
       ${upcoming.length ? upcoming.map(e => examCard(e, progressMap[e.subject_id])).join('') :
-        '<div class="text-muted text-sm">沒有即將到來的考試</div>'}
+        `<div class="text-muted text-sm">${t('exam.noUpcoming')}</div>`}
     </div>
 
     ${expired.length ? `
     <div class="card" style="margin-bottom:1.25rem;border-left:3px solid var(--danger);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
-        <div class="card-title" style="color:var(--danger);margin-bottom:0;">已過期 (${expired.length})</div>
-        <button class="btn btn-danger btn-sm" id="exam-clear-expired-btn">清除已過期</button>
+        <div class="card-title" style="color:var(--danger);margin-bottom:0;">${t('exam.expired', { n: expired.length })}</div>
+        <button class="btn btn-danger btn-sm" id="exam-clear-expired-btn">${t('exam.clearExpired')}</button>
       </div>
       ${expired.map(e => examCard(e, progressMap[e.subject_id])).join('')}
     </div>` : ''}
 
     ${done.length ? `
     <div class="card">
-      <div class="card-title" style="color:var(--text2)">已完成 (${done.length})</div>
+      <div class="card-title" style="color:var(--text2)">${t('exam.done', { n: done.length })}</div>
       ${done.map(e => examCard(e, progressMap[e.subject_id])).join('')}
     </div>` : ''}
 
@@ -65,6 +72,7 @@ function buildPage(exams, progressMap) {
 function examCard(e, prog) {
   const d = e.days_left;
   const urgency = d <= 3 ? 'urgent' : d <= 7 ? 'soon' : 'ok';
+  const tl = TYPE_LABEL();
 
   let progressBar = '';
   if (prog && prog.total > 0) {
@@ -73,14 +81,14 @@ function examCard(e, prog) {
     progressBar = `
       <div style="margin-top:.55rem;display:flex;flex-direction:column;gap:4px;">
         <div style="display:flex;align-items:center;gap:.5rem;">
-          <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">預習</span>
+          <span style="font-size:.68rem;color:var(--accent);min-width:2.2rem;">${t('dash.preview')}</span>
           <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
             <div style="height:100%;width:${prevPct}%;background:var(--accent);border-radius:999px;transition:width .3s;"></div>
           </div>
           <span style="font-size:.68rem;color:var(--text3);min-width:2.8rem;text-align:right;">${prog.prevDone}/${prog.total}</span>
         </div>
         <div style="display:flex;align-items:center;gap:.5rem;">
-          <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">複習</span>
+          <span style="font-size:.68rem;color:var(--success);min-width:2.2rem;">${t('dash.review')}</span>
           <div style="flex:1;height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;">
             <div style="height:100%;width:${revPct}%;background:var(--success);border-radius:999px;transition:width .3s;"></div>
           </div>
@@ -94,18 +102,18 @@ function examCard(e, prog) {
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap;">
           <span class="badge" style="background:${e.subject_color}">${escHtml(e.subject_name)}</span>
-          <span class="chip">${TYPE_LABEL[e.exam_type]||e.exam_type}</span>
-          ${!e.is_completed ? `<span class="countdown-pill ${urgency}">${d < 0 ? `已過 ${-d} 天` : d === 0 ? '今天！' : d+'天後'}</span>` : ''}
+          <span class="chip">${tl[e.exam_type] || e.exam_type}</span>
+          ${!e.is_completed ? `<span class="countdown-pill ${urgency}">${d < 0 ? t('exam.overdueBy', { n: -d }) : d === 0 ? t('exam.today') : t('exam.daysLeft', { n: d })}</span>` : ''}
         </div>
         <div style="font-weight:600;margin-bottom:.15rem;">${escHtml(e.title)}</div>
-        <div class="text-xs text-muted">${fmtDate(e.exam_date)}${e.notes?'・'+escHtml(e.notes):''}</div>
+        <div class="text-xs text-muted">${fmtDate(e.exam_date)}${e.notes ? '・' + escHtml(e.notes) : ''}</div>
         ${progressBar}
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;margin-left:1rem;flex-shrink:0;">
         <button class="btn btn-ghost btn-sm exam-toggle-btn" data-id="${e.id}" data-done="${e.is_completed}">
-          ${e.is_completed ? '↩ 取消完成' : '✓ 完成'}
+          ${e.is_completed ? t('btn.undone') : t('btn.done')}
         </button>
-        <button class="btn btn-ghost btn-sm exam-edit-btn" data-id="${e.id}">編輯</button>
+        <button class="btn btn-ghost btn-sm exam-edit-btn" data-id="${e.id}">${t('btn.edit')}</button>
         <button class="btn btn-danger btn-sm exam-del-btn" data-id="${e.id}">✕</button>
       </div>
     </div>`;
@@ -113,39 +121,40 @@ function examCard(e, prog) {
 
 function buildModal(e) {
   e = e || {};
+  const tl = TYPE_LABEL();
   return `
     <div class="modal-box">
-      <div class="modal-title">${e.id ? '編輯考試' : '新增考試'}</div>
+      <div class="modal-title">${e.id ? t('exam.editTitle') : t('exam.addTitle')}</div>
       <div class="form-group">
-        <label class="form-label">科目</label>
+        <label class="form-label">${t('label.subject')}</label>
         <select id="em-subject" class="form-select">
           ${subjects.map(s => `<option value="${s.id}" ${e.subject_id==s.id?'selected':''}>${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">考試名稱</label>
-        <input id="em-title" class="form-input" value="${escHtml(e.title||'')}" placeholder="例：第一章小考">
+        <label class="form-label">${t('label.examName')}</label>
+        <input id="em-title" class="form-input" value="${escHtml(e.title||'')}" placeholder="${t('enum.examType.quiz')}…">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
         <div class="form-group">
-          <label class="form-label">日期</label>
+          <label class="form-label">${t('label.date')}</label>
           <input id="em-date" type="date" class="form-input" value="${e.exam_date||''}">
         </div>
         <div class="form-group">
-          <label class="form-label">類型</label>
+          <label class="form-label">${t('label.type')}</label>
           <select id="em-type" class="form-select">
-            ${Object.entries(TYPE_LABEL).map(([v,l]) => `<option value="${v}" ${e.exam_type==v?'selected':''}>${l}</option>`).join('')}
+            ${Object.entries(tl).map(([v, l]) => `<option value="${v}" ${e.exam_type==v?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">備註（選填）</label>
+        <label class="form-label">${t('label.notesOptional')}</label>
         <input id="em-notes" class="form-input" value="${escHtml(e.notes||'')}">
       </div>
       <div class="modal-footer">
-        ${e.id ? `<button class="btn btn-danger btn-sm" id="em-del">刪除</button>` : ''}
-        <button class="btn btn-ghost" id="em-cancel">取消</button>
-        <button class="btn btn-primary" id="em-save">儲存</button>
+        ${e.id ? `<button class="btn btn-danger btn-sm" id="em-del">${t('btn.delete')}</button>` : ''}
+        <button class="btn btn-ghost" id="em-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="em-save">${t('btn.save')}</button>
       </div>
     </div>`;
 }
@@ -170,14 +179,14 @@ async function save(el, existing) {
     exam_type: modal.querySelector('#em-type').value,
     notes: modal.querySelector('#em-notes').value.trim() || null,
   };
-  if (!body.title || !body.exam_date) return alert('請填寫名稱與日期');
+  if (!body.title || !body.exam_date) return alert(t('alert.fillNameDate'));
   if (existing) await put('/exams/' + existing.id, body);
   else          await post('/exams', body);
   await refresh(el);
 }
 
 async function deleteExam(el, id) {
-  if (!confirm('確定刪除？')) return;
+  if (!confirm(t('confirm.delete'))) return;
   await del('/exams/' + id);
   await refresh(el);
 }
@@ -189,7 +198,7 @@ function attachEvents(el, exams) {
   if (clearBtn) {
     clearBtn.onclick = async () => {
       const expired = exams.filter(e => !e.is_completed && e.days_left < 0);
-      if (!confirm(`將 ${expired.length} 筆已過期考試標記為完成？`)) return;
+      if (!confirm(t('confirm.clearExpired', { n: expired.length }))) return;
       await Promise.all(expired.map(e => put('/exams/' + e.id, { is_completed: true })));
       await refresh(el);
     };

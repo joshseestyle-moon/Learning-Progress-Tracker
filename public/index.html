@@ -76,7 +76,7 @@ async function loadProfiles() {
     return;
   }
   grid.innerHTML = users.map(u => `
-    <div class="profile-card" style="position:relative;" onclick="${editMode ? '' : `selectUser(${u.id}, '${escHtml(u.name)}')`}" data-id="${u.id}">
+    <div class="profile-card" style="position:relative;" onclick="${editMode ? '' : `selectUser(${u.id}, '${escHtml(u.name)}', '${u.lang || 'zh-TW'}')`}" data-id="${u.id}">
       ${editMode ? `
         <button onclick="deleteUser(event, ${u.id}, '${escHtml(u.name)}')"
           style="position:absolute;top:6px;right:6px;
@@ -92,10 +92,11 @@ async function loadProfiles() {
     </div>`).join('');
 }
 
-function selectUser(id, name) {
+function selectUser(id, name, lang) {
   if (editMode) return;
   localStorage.setItem('userId', id);
   localStorage.setItem('userName', name);
+  localStorage.setItem('lang', lang || 'zh-TW');
   location.href = '/app#dashboard';
 }
 

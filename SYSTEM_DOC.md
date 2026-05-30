@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：2.9　　最後更新：2026-05-30
+> 版本：3.0　　最後更新：2026-05-30
 
 ---
 
@@ -65,6 +65,7 @@
 | 前端框架 | 原生 HTML / CSS / JS | — | 無 build step |
 | 圖表 | Chart.js | v4 | 讀書時間柱狀圖、成績折線圖 |
 | UI 主題 | CSS Custom Properties | — | 亮色／暗色模式切換 |
+| 多語系 | 內嵌 i18n.js | — | 正體中文 / English / 日本語，無 build step |
 
 ---
 
@@ -113,8 +114,9 @@ X:\class\
     │   ├── app.css             # 元件樣式
     │   └── print.css           # 列印週計畫 A4 版面
     ├── js/
-    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id；自動派送 badge-earned 事件
-    │   ├── router.js           # Hash Router（#dashboard、#exams…）
+    │   ├── i18n.js             # 多語系模組：t()、setLang()、getLang()；三語內嵌，無 async
+    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id；自動派送 badge-earned 事件；fmtDate locale-aware
+    │   ├── router.js           # Hash Router（#dashboard、#exams…）；監聽 langchange 事件重新 render
     │   ├── dashboard.js        # 今日概覽頁
     │   ├── timetable.js        # 每週課表頁
     │   ├── calendar.js         # 行事曆頁
@@ -234,6 +236,7 @@ subjects ──┬── timetable_slots
 | `name` | TEXT | 顯示名稱 |
 | `avatar_color` | TEXT | 頭像顏色（CSS hex） |
 | `is_admin` | INTEGER | 管理員標記（0/1，目前純展示用） |
+| `lang` | TEXT | 介面語系（`zh-TW` / `en` / `ja`，預設 `zh-TW`）（Migration 15） |
 | `created_at` | TEXT | 建立時間（ISO 8601） |
 
 #### `subjects` — 科目（每人各自獨立）
@@ -454,9 +457,9 @@ subjects ──┬── timetable_slots
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/api/users` | 取得所有使用者列表 |
+| GET | `/api/users` | 取得所有使用者列表（含 `lang` 欄位） |
 | POST | `/api/users` | 新增使用者 |
-| PUT | `/api/users/:id` | 修改使用者名稱或顏色 |
+| PUT | `/api/users/:id` | 修改使用者名稱、顏色或語系（`lang`） |
 | DELETE | `/api/users/:id` | 刪除使用者（連帶刪除所有個人資料） |
 
 **POST `/api/users` 請求體**
@@ -467,6 +470,12 @@ subjects ──┬── timetable_slots
   "is_admin": 0
 }
 ```
+
+**PUT `/api/users/:id` — `lang` 欄位**
+```json
+{ "lang": "en" }
+```
+> 可接受值：`zh-TW`、`en`、`ja`；無效值會靜默忽略並保留原值
 
 ---
 
@@ -732,6 +741,15 @@ subjects ──┬── timetable_slots
 
 ### 共用模組
 
+#### `i18n.js`
+```
+t(key, vars)         — 取得目前語系的翻譯字串，支援 {var} 插值
+setLang(lang)        — 切換語系（'zh-TW'|'en'|'ja'），更新 localStorage 並派送 langchange 事件
+getLang()            — 取得目前語系代碼
+tErr(msg)            — 將後端回傳的中文錯誤字串翻譯為目前語系（fallback 原文）
+```
+三語字串（~200 個 key）全部內嵌，無 CDN 依賴、無 async fetch、無 build step。
+
 #### `api.js`
 ```
 getUserId()          — 從 localStorage 取得目前使用者 ID
@@ -742,13 +760,13 @@ put(path, body)      — PUT 請求（同上）
 patch(path, body)    — PATCH 請求（同上）
 del(path)            — DELETE 請求
 escHtml(s)           — XSS 防護，轉義 HTML 特殊字元
-fmtDate(d)           — 日期格式化（YYYY-MM-DD → 中文格式）
+fmtDate(d)           — 日期格式化（locale-aware，依 getLang() 輸出對應格式）
 today()              — 取得今日日期字串（YYYY-MM-DD）
 daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 ```
 
 #### `router.js`
-監聽 `hashchange` 事件，依 hash 動態載入對應頁面模組的 `render(el)` 函式，並更新側邊欄 active 狀態與頁面標題。
+監聽 `hashchange` 事件，依 hash 動態載入對應頁面模組的 `render(el)` 函式，並更新側邊欄 active 狀態與頁面標題。同時監聽 `langchange` 事件，切換語系時立即重新 render 當前頁面並更新靜態字串。
 
 ### 頁面功能說明
 
@@ -759,7 +777,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 「💾 備份資料」：WAL checkpoint 後下載完整資料庫檔案
 - 「📂 匯入備份」：選取 `.db` 備份檔上傳，確認警告後還原全部資料（不需重啟伺服器）
 - 「🌙 切換主題」：切換亮色／暗色模式
-- 選擇後將 `userId` 與 `userName` 寫入 `localStorage`，跳轉至 App
+- 選擇後將 `userId`、`userName`、**`lang`**（來自使用者 DB 記錄）寫入 `localStorage`，跳轉至 App；語系跟著帳號走，切換帳號時自動還原各自語系
 
 #### 今日概覽（#dashboard）
 - **今日課表**：顯示當天節次與科目
@@ -831,9 +849,9 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 
 #### 獎勵商店（#shop）
 - 三個分頁 tab 切換：
-  - **✨ 許願池**：新增自訂獎勵（名稱＋所需點數），管理願望清單（可刪除）
-  - **🎁 櫃台**：顯示目前點數餘額；每張獎勵卡片含「兌換」按鈕，點數不足時按鈕灰化/禁用
-  - **📋 兌換紀錄**：顯示歷史兌換記錄（名稱、日期、扣點），最新在最前
+  - **許願池**：新增自訂獎勵（名稱＋所需點數），管理願望清單（可刪除）
+  - **櫃台**：顯示目前點數餘額；每張獎勵卡片含「兌換」按鈕，點數不足時按鈕灰化/禁用
+  - **兌換紀錄**：顯示歷史兌換記錄（名稱、日期、扣點），最新在最前
 - 各帳號的許願池、點數、兌換紀錄完全獨立
 
 #### 課程資訊（#subjects）
@@ -847,6 +865,14 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **本週讀書計畫**：本週排定日期的預習/複習項目表格（日期、科目、章節、類型、完成狀態）
 - **頁尾**：系統名稱與使用者・日期
 - 紙張規格：`@page { size: 297mm 210mm landscape; margin: 2mm; }`；螢幕預覽同樣以 297mm 顯示；科目色彩透過 `print-color-adjust: exact` 確保正確輸出
+
+#### 語系切換
+- 側邊欄底部顯示三個語系按鈕：**中**（正體中文）、**EN**（English）、**日**（日本語）
+- 點擊即時切換整個介面語言（不需重新整理頁面）
+- 語系偏好存於個人帳號（DB `users.lang`），切換帳號時自動還原
+- `langchange` 事件觸發後，`router.js` 重新 render 當前頁面，`app.html` 更新側邊欄靜態字串
+- 後端錯誤訊息以中文儲存，前端透過 `tErr()` 對照表翻譯後顯示
+- 日期格式隨語系變化：zh-TW → `2026/06/01`、en → `06/01/2026`、ja → `2026/06/01`
 
 ---
 
@@ -952,4 +978,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-05-30 的實作狀態（v2.9）。*
+*本文件反映截至 2026-05-30 的實作狀態（v3.0）。*

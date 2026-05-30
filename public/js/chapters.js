@@ -1,4 +1,5 @@
 import { get, post, put, del, patch, escHtml, fmtDate } from './api.js';
+import { t } from './i18n.js';
 
 let subjects = [];
 
@@ -6,7 +7,7 @@ export async function render(el) {
   try {
     subjects = await get('/subjects');
   } catch (e) {
-    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
   await refresh(el);
@@ -32,8 +33,8 @@ function buildPage(chapters, timeMap = {}) {
 
   return `
     <div style="display:flex;justify-content:space-between;margin-bottom:1.25rem;">
-      <p class="text-sm text-muted">為每個章節設定預習、複習日期，並追蹤完成狀態。已排定的項目會顯示在行事曆上。</p>
-      <button class="btn btn-primary" id="ch-add-btn" style="flex-shrink:0;margin-left:1rem;">+ 新增章節</button>
+      <p class="text-sm text-muted">${t('ch.description')}</p>
+      <button class="btn btn-primary" id="ch-add-btn" style="flex-shrink:0;margin-left:1rem;">${t('ch.add')}</button>
     </div>
     ${Object.keys(bySubject).length ? Object.entries(bySubject).map(([sid, grp]) => {
       const total    = grp.items.length;
@@ -45,11 +46,11 @@ function buildPage(chapters, timeMap = {}) {
             <div style="display:flex;align-items:center;gap:.75rem;">
               <span style="width:12px;height:12px;border-radius:50%;background:${grp.color};display:inline-block;"></span>
               <span>${escHtml(grp.name)}</span>
-              <span class="text-xs text-muted">${total} 章節</span>
+              <span class="text-xs text-muted">${t('ch.chapterCount', { n: total })}</span>
             </div>
             <div style="display:flex;align-items:center;gap:1rem;">
-              <span class="text-xs" style="color:var(--accent);">預習 ${prevDone}/${total}</span>
-              <span class="text-xs" style="color:var(--success);">已複習 ${revDone}/${total}</span>
+              <span class="text-xs" style="color:var(--accent);">${t('ch.previewCount', { done: prevDone, total })}</span>
+              <span class="text-xs" style="color:var(--success);">${t('ch.reviewCount', { done: revDone, total })}</span>
               <span style="color:var(--text3);">▼</span>
             </div>
           </div>
@@ -57,10 +58,10 @@ function buildPage(chapters, timeMap = {}) {
             <table style="width:100%;border-collapse:collapse;font-size:.87rem;">
               <thead>
                 <tr style="background:var(--bg3);">
-                  <th style="padding:.5rem .85rem;text-align:left;color:var(--text2);font-size:.78rem;width:30%;">章節</th>
-                  <th style="padding:.5rem .5rem;text-align:center;color:var(--accent);font-size:.78rem;width:20%;">📖 預習</th>
-                  <th style="padding:.5rem .5rem;text-align:left;color:var(--success);font-size:.78rem;width:35%;">✏️ 複習</th>
-                  <th style="padding:.5rem .5rem;text-align:center;color:var(--warn);font-size:.78rem;width:9%;">⏱ 時間</th>
+                  <th style="padding:.5rem .85rem;text-align:left;color:var(--text2);font-size:.78rem;width:30%;">${t('th.chapter')}</th>
+                  <th style="padding:.5rem .5rem;text-align:center;color:var(--accent);font-size:.78rem;width:20%;">${t('th.preview')}</th>
+                  <th style="padding:.5rem .5rem;text-align:left;color:var(--success);font-size:.78rem;width:35%;">${t('th.reviews')}</th>
+                  <th style="padding:.5rem .5rem;text-align:center;color:var(--warn);font-size:.78rem;width:9%;">${t('th.time')}</th>
                   <th style="padding:.5rem .5rem;width:6%;"></th>
                 </tr>
               </thead>
@@ -69,12 +70,12 @@ function buildPage(chapters, timeMap = {}) {
               </tbody>
             </table>
             <div style="padding:.6rem .85rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-              <button class="btn btn-ghost btn-sm inline-add-btn" data-sid="${sid}">+ 新增章節到此科目</button>
-              <button class="btn btn-danger btn-sm del-all-chapters-btn" data-sid="${sid}" data-name="${escHtml(grp.name)}" style="opacity:.6;font-size:.75rem;">🗑 刪除此科目所有章節</button>
+              <button class="btn btn-ghost btn-sm inline-add-btn" data-sid="${sid}">${t('ch.addToSubject')}</button>
+              <button class="btn btn-danger btn-sm del-all-chapters-btn" data-sid="${sid}" data-name="${escHtml(grp.name)}" style="opacity:.6;font-size:.75rem;">${t('ch.deleteAllChapters')}</button>
             </div>
           </div>
         </div>`;
-    }).join('') : '<div class="empty-state"><div class="icon">📖</div><p>請先到「課程資訊」新增科目與章節</p></div>'}
+    }).join('') : `<div class="empty-state"><div class="icon">📖</div><p>${t('ch.noSubject')}</p></div>`}
     <div id="ch-modal" class="modal-overlay hidden">${buildModal()}</div>
     <div id="date-modal" class="modal-overlay hidden"></div>`;
 }
@@ -113,12 +114,12 @@ function previewCell(c) {
     <div style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;">
       <button class="ch-toggle-btn" data-id="${c.id}" data-type="preview" data-subject-id="${c.subject_id}" data-done="${c.preview_done ? '1' : '0'}"
         style="padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;">
-        ${c.preview_done ? '✓ 預習' : '預習'}
+        ${c.preview_done ? t('ch.previewDone') : t('ch.previewUndone')}
       </button>
       <button class="ch-date-btn text-xs" data-id="${c.id}" data-type="preview"
         data-date="${c.preview_date||''}" data-notes="${escHtml(c.preview_notes||'')}"
         style="color:${c.preview_date?color:'var(--text3)'};cursor:pointer;background:none;border:none;font-size:.72rem;padding:0;">
-        ${c.preview_date ? fmtDate(c.preview_date) : '+ 設定日期'}
+        ${c.preview_date ? fmtDate(c.preview_date) : t('ch.setDate')}
       </button>
       ${c.preview_notes
         ? `<span class="text-xs" title="${escHtml(c.preview_notes)}"
@@ -141,12 +142,12 @@ function reviewsCell(chId, reviews, subjectId) {
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
           <button class="rev-toggle-btn" data-pid="${r.id}" data-subject-id="${subjectId}" data-ch-id="${chId}" data-done="${r.is_done ? '1' : '0'}"
             style="padding:.15rem .45rem;border-radius:999px;font-size:.73rem;font-weight:700;cursor:pointer;${doneStyle}transition:.1s;white-space:nowrap;">
-            ${r.is_done ? '✓ ' : ''}第${r.seq}次複習
+            ${r.is_done ? t('ch.reviewDone', { seq: r.seq }) : t('ch.reviewUndone', { seq: r.seq })}
           </button>
           <button class="rev-date-btn" data-pid="${r.id}"
             data-date="${r.scheduled_date||''}" data-notes="${escHtml(r.notes||'')}" data-seq="${r.seq}"
             style="color:${r.scheduled_date?color:'var(--text3)'};cursor:pointer;background:none;border:none;font-size:.7rem;padding:0;white-space:nowrap;">
-            ${r.scheduled_date ? fmtDate(r.scheduled_date) : '+ 日期'}
+            ${r.scheduled_date ? fmtDate(r.scheduled_date) : t('ch.setRevDate')}
           </button>
           ${r.notes
             ? `<span title="${escHtml(r.notes)}" style="font-size:.68rem;color:var(--text2);cursor:default;">📝</span>`
@@ -161,7 +162,7 @@ function reviewsCell(chId, reviews, subjectId) {
         style="font-size:.72rem;color:${color};background:none;
                border:1.5px dashed ${color};border-radius:999px;
                padding:.15rem .55rem;cursor:pointer;white-space:nowrap;margin-top:2px;">
-        + 新增複習
+        ${t('ch.addReview')}
       </button>
     </div>`;
 }
@@ -170,24 +171,24 @@ function buildModal(c) {
   c = c || {};
   return `
     <div class="modal-box">
-      <div class="modal-title">${c.id ? '編輯章節' : '新增章節'}</div>
+      <div class="modal-title">${c.id ? t('ch.editTitle') : t('ch.addTitle')}</div>
       <div class="form-group">
-        <label class="form-label">科目</label>
+        <label class="form-label">${t('label.subject')}</label>
         <select id="ch-subject" class="form-select">
           ${subjects.map(s => `<option value="${s.id}" ${c.subject_id==s.id?'selected':''}>${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">章節名稱</label>
-        <input id="ch-title" class="form-input" value="${escHtml(c.title||'')}" placeholder="例：第一章 緒論">
+        <label class="form-label">${t('label.chapterName')}</label>
+        <input id="ch-title" class="form-input" value="${escHtml(c.title||'')}" placeholder="${t('label.chapterPlaceholder')}">
       </div>
       <div class="form-group">
-        <label class="form-label">順序</label>
+        <label class="form-label">${t('label.order')}</label>
         <input id="ch-order" type="number" class="form-input" value="${c.sort_order||0}" min="0">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" id="ch-cancel">取消</button>
-        <button class="btn btn-primary" id="ch-save">儲存</button>
+        <button class="btn btn-ghost" id="ch-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="ch-save">${t('btn.save')}</button>
       </div>
     </div>`;
 }
@@ -197,19 +198,19 @@ function buildDateModal(title, currentDate, currentNotes) {
     <div class="modal-box" style="max-width:380px;">
       <div class="modal-title">${title}</div>
       <div class="form-group">
-        <label class="form-label">排定日期</label>
+        <label class="form-label">${t('label.scheduledDate')}</label>
         <input id="dm-date" type="date" class="form-input" value="${currentDate||''}">
       </div>
       <div class="form-group">
-        <label class="form-label">備註</label>
+        <label class="form-label">${t('label.notes')}</label>
         <textarea id="dm-notes" class="form-input" rows="3"
-          placeholder="填寫學習狀況、重點或待補內容…"
+          placeholder="${t('label.notesPlaceholder')}"
           style="resize:vertical;">${escHtml(currentNotes||'')}</textarea>
       </div>
       <div class="modal-footer">
-        ${currentDate ? `<button class="btn btn-ghost btn-sm" id="dm-clear">清除日期</button>` : ''}
-        <button class="btn btn-ghost" id="dm-cancel">取消</button>
-        <button class="btn btn-primary" id="dm-save">確認</button>
+        ${currentDate ? `<button class="btn btn-ghost btn-sm" id="dm-clear">${t('btn.clearDate')}</button>` : ''}
+        <button class="btn btn-ghost" id="dm-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="dm-save">${t('btn.confirm')}</button>
       </div>
     </div>`;
 }
@@ -240,14 +241,14 @@ function openDateModal(el, title, currentDate, currentNotes, onSave, onClear) {
 function buildTimeModal() {
   return `
     <div class="modal-box" style="max-width:320px;">
-      <div class="modal-title">記錄學習時間</div>
+      <div class="modal-title">${t('timeModal.title')}</div>
       <div class="form-group">
-        <label class="form-label">花了多少分鐘？</label>
-        <input id="tm-minutes" type="number" class="form-input" min="1" max="600" placeholder="例：30">
+        <label class="form-label">${t('timeModal.label')}</label>
+        <input id="tm-minutes" type="number" class="form-input" min="1" max="600" placeholder="${t('timeModal.placeholder')}">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" id="tm-skip">略過</button>
-        <button class="btn btn-primary" id="tm-save">記錄</button>
+        <button class="btn btn-ghost" id="tm-skip">${t('timeModal.skip')}</button>
+        <button class="btn btn-primary" id="tm-save">${t('timeModal.save')}</button>
       </div>
     </div>`;
 }
@@ -288,7 +289,7 @@ async function save(el, existing) {
     title: modal.querySelector('#ch-title').value.trim(),
     sort_order: +modal.querySelector('#ch-order').value || 0,
   };
-  if (!body.title) return alert('請填寫章節名稱');
+  if (!body.title) return alert(t('alert.fillChapterName'));
   if (existing) await put('/chapters/' + existing.id, body);
   else          await post('/chapters', body);
   await refresh(el);
@@ -310,8 +311,8 @@ function attachEvents(el, chapters) {
         openTimeModal(el,
           async (minutes) => {
             if (minutes > 0) {
-              const today = new Date().toISOString().slice(0, 10);
-              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: today, minutes, chapter_id: +btn.dataset.id }); } catch (_) {}
+              const todayStr = new Date().toISOString().slice(0, 10);
+              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.id }); } catch (_) {}
             }
             await refresh(el);
           },
@@ -329,7 +330,7 @@ function attachEvents(el, chapters) {
       const chId = btn.dataset.id;
       openDateModal(
         el,
-        '設定預習進度',
+        t('date.preview'),
         btn.dataset.date,
         btn.dataset.notes,
         (date, notes) => patch('/chapters/' + chId + '/progress', { type: 'preview', scheduled_date: date, notes }),
@@ -347,8 +348,8 @@ function attachEvents(el, chapters) {
         openTimeModal(el,
           async (minutes) => {
             if (minutes > 0) {
-              const today = new Date().toISOString().slice(0, 10);
-              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: today, minutes, chapter_id: +btn.dataset.chId }); } catch (_) {}
+              const todayStr = new Date().toISOString().slice(0, 10);
+              try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.chId }); } catch (_) {}
             }
             await refresh(el);
           },
@@ -367,7 +368,7 @@ function attachEvents(el, chapters) {
       const seq = btn.dataset.seq;
       openDateModal(
         el,
-        `設定第${seq}次複習進度`,
+        t('date.review', { seq }),
         btn.dataset.date,
         btn.dataset.notes,
         (date, notes) => patch('/chapters/progress/' + pid, { scheduled_date: date, notes }),
@@ -379,7 +380,7 @@ function attachEvents(el, chapters) {
   // Delete review session
   el.querySelectorAll('.rev-del-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('確定刪除此次複習記錄？')) return;
+      if (!confirm(t('confirm.deleteReview'))) return;
       await del('/chapters/progress/' + btn.dataset.pid);
       await refresh(el);
     };
@@ -392,7 +393,7 @@ function attachEvents(el, chapters) {
         await post('/chapters/' + btn.dataset.chId + '/review', {});
         await refresh(el);
       } catch (e) {
-        alert('新增失敗：' + e.message);
+        alert(t('ch.addReviewFail', { msg: e.message }));
       }
     };
   });
@@ -400,7 +401,7 @@ function attachEvents(el, chapters) {
   // Delete chapter
   el.querySelectorAll('.ch-del-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('確定刪除此章節？')) return;
+      if (!confirm(t('confirm.deleteChapter'))) return;
       await del('/chapters/' + btn.dataset.id);
       await refresh(el);
     };
@@ -409,12 +410,12 @@ function attachEvents(el, chapters) {
   // Delete all chapters for a subject
   el.querySelectorAll('.del-all-chapters-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`確定刪除「${btn.dataset.name}」的所有章節？\n此操作無法復原，相關進度記錄也會一併刪除。`)) return;
+      if (!confirm(t('confirm.deleteAllChapters', { name: btn.dataset.name }))) return;
       try {
         await del('/chapters?subject_id=' + btn.dataset.sid);
         await refresh(el);
       } catch (e) {
-        alert('刪除失敗：' + e.message);
+        alert(t('ch.deleteFail', { msg: e.message }));
       }
     };
   });

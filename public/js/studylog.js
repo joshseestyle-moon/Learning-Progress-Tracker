@@ -1,4 +1,5 @@
 import { get, post, del, escHtml, today } from './api.js';
+import { t } from './i18n.js';
 
 let subjects = [];
 let allChapters = [];
@@ -12,7 +13,7 @@ export async function render(el) {
   try {
     [subjects, allChapters] = await Promise.all([get('/subjects'), get('/chapters')]);
   } catch (e) {
-    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
   await refresh(el);
@@ -33,7 +34,7 @@ function chaptersForSubject(subjectId) {
 function chapterSelect(id, subjectId, selected) {
   const chs = chaptersForSubject(subjectId);
   return `<select id="${id}" class="form-select">
-    <option value="">— 不指定章節 —</option>
+    <option value="">${t('sl.noChapter')}</option>
     ${chs.map(c => `<option value="${c.id}" ${selected==c.id?'selected':''}>${escHtml(c.title)}</option>`).join('')}
   </select>`;
 }
@@ -44,52 +45,52 @@ function buildPage(logs, weekly) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
       <!-- Manual entry -->
       <div class="card">
-        <div class="card-title">📝 手動記錄</div>
+        <div class="card-title">${t('sl.manualEntry')}</div>
         <div class="form-group">
-          <label class="form-label">科目</label>
+          <label class="form-label">${t('label.subject')}</label>
           <select id="sl-subject" class="form-select">
             ${subjects.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">章節（選填）</label>
+          <label class="form-label">${t('label.chapterOptional')}</label>
           <div id="sl-chapter-wrap">${chapterSelect('sl-chapter', firstSubjectId, '')}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
           <div class="form-group">
-            <label class="form-label">日期</label>
+            <label class="form-label">${t('label.date')}</label>
             <input id="sl-date" type="date" class="form-input" value="${today()}">
           </div>
           <div class="form-group">
-            <label class="form-label">分鐘數</label>
+            <label class="form-label">${t('label.minutes')}</label>
             <input id="sl-minutes" type="number" class="form-input" min="1" placeholder="30">
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">備註（選填）</label>
+          <label class="form-label">${t('label.noteOptional')}</label>
           <input id="sl-note" class="form-input" placeholder="">
         </div>
-        <button class="btn btn-primary w-full" id="sl-submit">記錄</button>
+        <button class="btn btn-primary w-full" id="sl-submit">${t('timeModal.save')}</button>
       </div>
 
       <!-- Stopwatch -->
       <div class="card" style="text-align:center;">
-        <div class="card-title">⏱️ 碼錶計時</div>
+        <div class="card-title">${t('sl.stopwatch')}</div>
         <div class="form-group">
-          <label class="form-label">科目</label>
+          <label class="form-label">${t('label.subject')}</label>
           <select id="sw-subject" class="form-select" style="text-align:left;">
             ${subjects.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">章節（選填）</label>
+          <label class="form-label">${t('label.chapterOptional')}</label>
           <div id="sw-chapter-wrap" style="text-align:left;">${chapterSelect('sw-chapter', firstSubjectId, '')}</div>
         </div>
         <div class="stopwatch-display" id="sw-display">00:00:00</div>
         <div style="display:flex;gap:.75rem;justify-content:center;">
-          <button class="btn btn-primary" id="sw-toggle">▶ 開始</button>
-          <button class="btn btn-ghost" id="sw-reset">重置</button>
-          <button class="btn btn-ghost" id="sw-save" disabled>存入記錄</button>
+          <button class="btn btn-primary" id="sw-toggle">${t('sw.start')}</button>
+          <button class="btn btn-ghost" id="sw-reset">${t('sw.reset')}</button>
+          <button class="btn btn-ghost" id="sw-save" disabled>${t('sw.saveLog')}</button>
         </div>
         <div id="sw-msg" style="font-size:.8rem;color:var(--text2);margin-top:.5rem;"></div>
       </div>
@@ -97,15 +98,22 @@ function buildPage(logs, weekly) {
 
     <!-- Chart -->
     <div class="card" style="margin-bottom:1.25rem;">
-      <div class="card-title">📊 近 7 天讀書時間（分鐘）</div>
+      <div class="card-title">${t('sl.weeklyChart')}</div>
       <canvas id="study-chart" height="120"></canvas>
     </div>
 
     <!-- Log table -->
     <div class="card">
-      <div class="card-title">記錄列表</div>
+      <div class="card-title">${t('sl.logList')}</div>
       <table class="data-table">
-        <thead><tr><th>日期</th><th>科目</th><th>章節</th><th>分鐘</th><th>備註</th><th></th></tr></thead>
+        <thead><tr>
+          <th>${t('th.date')}</th>
+          <th>${t('th.subject')}</th>
+          <th>${t('th.chapter')}</th>
+          <th>${t('th.minutes')}</th>
+          <th>${t('th.notes')}</th>
+          <th></th>
+        </tr></thead>
         <tbody>
           ${logs.length ? logs.map(l => `
             <tr>
@@ -116,7 +124,7 @@ function buildPage(logs, weekly) {
               <td class="text-sm text-muted">${escHtml(l.note||'')}</td>
               <td><button class="btn btn-danger btn-sm sl-del-btn" data-id="${l.id}">✕</button></td>
             </tr>`).join('') :
-            '<tr><td colspan="6" style="text-align:center;color:var(--text2);">尚無記錄</td></tr>'}
+            `<tr><td colspan="6" style="text-align:center;color:var(--text2);">${t('sl.noLogs')}</td></tr>`}
         </tbody>
       </table>
     </div>`;
@@ -174,7 +182,6 @@ function updateDisplay() {
 }
 
 function attachEvents(el, logs) {
-  // Subject change → refresh chapter dropdown
   el.querySelector('#sl-subject').onchange = (e) => {
     el.querySelector('#sl-chapter-wrap').innerHTML = chapterSelect('sl-chapter', e.target.value, '');
   };
@@ -191,7 +198,7 @@ function attachEvents(el, logs) {
       minutes:    +el.querySelector('#sl-minutes').value,
       note:       el.querySelector('#sl-note').value.trim() || null,
     };
-    if (!body.minutes || body.minutes < 1) return alert('請輸入分鐘數');
+    if (!body.minutes || body.minutes < 1) return alert(t('alert.enterMinutes'));
     await post('/studylog', body);
     await refresh(el);
   };
@@ -208,7 +215,7 @@ function attachEvents(el, logs) {
     timerSubjectId = +el.querySelector('#sw-subject').value;
     timerChapterId = +el.querySelector('#sw-chapter').value || null;
     if (timerRunning) {
-      toggleBtn.textContent = '⏸ 暫停';
+      toggleBtn.textContent = t('sw.pause');
       timerInterval = setInterval(() => {
         timerSeconds++;
         display.textContent = updateDisplay();
@@ -216,14 +223,14 @@ function attachEvents(el, logs) {
       }, 1000);
     } else {
       clearInterval(timerInterval);
-      toggleBtn.textContent = '▶ 繼續';
+      toggleBtn.textContent = t('sw.resume');
     }
   };
 
   resetBtn.onclick = () => {
     clearInterval(timerInterval);
     timerRunning = false; timerSeconds = 0;
-    toggleBtn.textContent = '▶ 開始';
+    toggleBtn.textContent = t('sw.start');
     display.textContent = '00:00:00';
     saveBtn.disabled = true;
     msg.textContent = '';
@@ -238,10 +245,10 @@ function attachEvents(el, logs) {
       log_date: today(),
       minutes,
     });
-    msg.textContent = `已記錄 ${minutes} 分鐘！`;
+    msg.textContent = t('sl.saved', { minutes });
     clearInterval(timerInterval);
     timerRunning = false; timerSeconds = 0;
-    toggleBtn.textContent = '▶ 開始';
+    toggleBtn.textContent = t('sw.start');
     display.textContent = '00:00:00';
     saveBtn.disabled = true;
     await refresh(el);
@@ -250,7 +257,7 @@ function attachEvents(el, logs) {
   // Delete
   el.querySelectorAll('.sl-del-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('確定刪除？')) return;
+      if (!confirm(t('confirm.delete'))) return;
       await del('/studylog/' + btn.dataset.id);
       await refresh(el);
     };

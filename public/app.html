@@ -15,46 +15,51 @@
 <div class="app-shell">
   <!-- Sidebar -->
   <aside class="sidebar">
-    <div class="sidebar-logo">📚 <span>學習</span>管理</div>
+    <div class="sidebar-logo">📚 <span data-i18n="app.logo1">學習</span><span data-i18n="app.logo2">管理</span></div>
     <nav class="sidebar-nav">
       <div class="nav-item" data-route="dashboard" onclick="navigate('dashboard')">
-        <span class="nav-icon">🏠</span> 今日概覽
+        <span class="nav-icon">🏠</span> <span data-i18n="nav.dashboard">今日概覽</span>
       </div>
       <div class="nav-item" data-route="timetable" onclick="navigate('timetable')">
-        <span class="nav-icon">📅</span> 每週課表
+        <span class="nav-icon">📅</span> <span data-i18n="nav.timetable">每週課表</span>
       </div>
       <div class="nav-item" data-route="calendar" onclick="navigate('calendar')">
-        <span class="nav-icon">🗓️</span> 行事曆
+        <span class="nav-icon">🗓️</span> <span data-i18n="nav.calendar">行事曆</span>
       </div>
       <div class="nav-item" data-route="exams" onclick="navigate('exams')">
-        <span class="nav-icon">⏰</span> 考試倒數
+        <span class="nav-icon">⏰</span> <span data-i18n="nav.exams">考試倒數</span>
       </div>
       <div class="nav-item" data-route="chapters" onclick="navigate('chapters')">
-        <span class="nav-icon">📖</span> 讀書進度
+        <span class="nav-icon">📖</span> <span data-i18n="nav.chapters">讀書進度</span>
       </div>
       <div class="nav-item" data-route="studylog" onclick="navigate('studylog')">
-        <span class="nav-icon">⏱️</span> 讀書時間
+        <span class="nav-icon">⏱️</span> <span data-i18n="nav.studylog">讀書時間</span>
       </div>
       <div class="nav-item" data-route="grades" onclick="navigate('grades')">
-        <span class="nav-icon">🏆</span> 成績紀錄
+        <span class="nav-icon">🏆</span> <span data-i18n="nav.grades">成績紀錄</span>
       </div>
       <div class="nav-item" data-route="badges" onclick="navigate('badges')">
-        <span class="nav-icon">🎖️</span> 我的徽章
+        <span class="nav-icon">🎖️</span> <span data-i18n="nav.badges">我的徽章</span>
       </div>
       <div class="nav-item" data-route="shop" onclick="navigate('shop')">
-        <span class="nav-icon">🎁</span> 獎勵商店
+        <span class="nav-icon">🎁</span> <span data-i18n="nav.shop">獎勵商店</span>
       </div>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0;"></div>
       <div class="nav-item" data-route="subjects" onclick="navigate('subjects')">
-        <span class="nav-icon">⚙️</span> 課程資訊
+        <span class="nav-icon">⚙️</span> <span data-i18n="nav.subjects">課程資訊</span>
       </div>
       <div class="nav-item" data-route="print" onclick="navigate('print')">
-        <span class="nav-icon">🖨️</span> 列印週計畫
+        <span class="nav-icon">🖨️</span> <span data-i18n="nav.print">列印週計畫</span>
       </div>
     </nav>
     <div class="sidebar-footer">
       <div class="sidebar-user" id="sidebar-username">載入中…</div>
-      <div class="sidebar-switch" onclick="switchUser()">← 切換帳號</div>
+      <div class="sidebar-switch" onclick="switchUser()" data-i18n="app.switchAccount">← 切換帳號</div>
+      <div id="lang-switcher" style="display:flex;gap:.35rem;margin-top:.4rem;">
+        <button onclick="switchLang('zh-TW')" id="lang-zh" style="padding:.2rem .5rem;border-radius:4px;font-size:.75rem;border:1px solid rgba(255,255,255,.25);background:transparent;color:rgba(255,255,255,.7);cursor:pointer;">中</button>
+        <button onclick="switchLang('en')"    id="lang-en" style="padding:.2rem .5rem;border-radius:4px;font-size:.75rem;border:1px solid rgba(255,255,255,.25);background:transparent;color:rgba(255,255,255,.7);cursor:pointer;">EN</button>
+        <button onclick="switchLang('ja')"    id="lang-ja" style="padding:.2rem .5rem;border-radius:4px;font-size:.75rem;border:1px solid rgba(255,255,255,.25);background:transparent;color:rgba(255,255,255,.7);cursor:pointer;">日</button>
+      </div>
     </div>
   </aside>
 
@@ -65,7 +70,7 @@
   <div class="main-content">
     <div class="topbar">
       <h1 class="page-title" id="page-title">今日概覽</h1>
-      <button class="theme-toggle" onclick="toggleTheme()">🌙 切換主題</button>
+      <button class="theme-toggle" onclick="toggleTheme()" data-i18n="app.toggleTheme">🌙 切換主題</button>
     </div>
     <div id="view"></div>
   </div>
@@ -74,6 +79,7 @@
 <script type="module">
   import { initRouter, navigate as nav } from './js/router.js';
   import { getUserId, getUserName } from './js/api.js';
+  import { t, getLang, setLang } from './js/i18n.js';
 
   // Guard: redirect to picker if no user selected
   if (!getUserId()) { location.href = '/'; }
@@ -95,6 +101,45 @@
   };
   document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
 
+  // Update all static sidebar strings
+  function updateStaticStrings() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+    updateLangButtons();
+  }
+
+  function updateLangButtons() {
+    const cur = getLang();
+    ['zh', 'en', 'ja'].forEach(code => {
+      const langCode = code === 'zh' ? 'zh-TW' : code;
+      const btn = document.getElementById('lang-' + code);
+      if (!btn) return;
+      const active = cur === langCode;
+      btn.style.background = active ? 'rgba(255,255,255,.25)' : 'transparent';
+      btn.style.color = active ? '#fff' : 'rgba(255,255,255,.7)';
+      btn.style.fontWeight = active ? '700' : '400';
+    });
+  }
+
+  window.switchLang = async function(lang) {
+    setLang(lang);
+    const userId = getUserId();
+    if (userId) {
+      try {
+        await fetch('/api/users/' + userId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+          body: JSON.stringify({ lang }),
+        });
+      } catch (_) {}
+    }
+    updateStaticStrings();
+  };
+
+  window.addEventListener('langchange', updateStaticStrings);
+
+  updateStaticStrings();
   initRouter();
 
   // Badge earned toast
@@ -111,7 +156,7 @@
     el.innerHTML = `
       <span style="font-size:1.6rem;flex-shrink:0">${badge.icon}</span>
       <div>
-        <div style="font-size:.72rem;color:${rarityColor};font-weight:700;letter-spacing:.05em">解鎖新徽章！</div>
+        <div style="font-size:.72rem;color:${rarityColor};font-weight:700;letter-spacing:.05em">${t('app.badgeUnlocked')}</div>
         <div style="font-size:.9rem;font-weight:700;color:var(--text)">${badge.name}</div>
         <div style="font-size:.72rem;color:var(--text2)">${badge.desc}</div>
       </div>`;

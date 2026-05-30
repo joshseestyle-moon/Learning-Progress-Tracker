@@ -1,4 +1,5 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
+import { t } from './i18n.js';
 
 let subjects = [];
 let exams = [];
@@ -8,7 +9,7 @@ export async function render(el) {
   try {
     [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
   } catch (e) {
-    el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+    el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
   await refresh(el);
@@ -26,26 +27,33 @@ function buildPage(grades) {
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
       <div style="display:flex;gap:.75rem;align-items:center;">
-        <label class="form-label" style="margin:0;">篩選科目：</label>
+        <label class="form-label" style="margin:0;">${t('grade.filterLabel')}</label>
         <select id="gr-filter" class="form-select" style="width:auto;">
-          <option value="">全部</option>
+          <option value="">${t('grade.allSubjects')}</option>
           ${subjects.map(s => `<option value="${s.id}" ${currentSubjectFilter==s.id?'selected':''}>${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
-      <button class="btn btn-primary" id="gr-add-btn">+ 新增成績</button>
+      <button class="btn btn-primary" id="gr-add-btn">${t('grade.add')}</button>
     </div>
 
     <!-- Chart -->
     <div class="card" style="margin-bottom:1.25rem;">
-      <div class="card-title">📈 成績趨勢</div>
+      <div class="card-title">${t('grade.trend')}</div>
       <canvas id="grade-chart" height="120"></canvas>
     </div>
 
     <!-- Table -->
     <div class="card">
-      <div class="card-title">成績列表</div>
+      <div class="card-title">${t('grade.list')}</div>
       <table class="data-table">
-        <thead><tr><th>日期</th><th>科目</th><th>考試名稱</th><th>分數</th><th style="width:90px;">班排名</th><th></th></tr></thead>
+        <thead><tr>
+          <th>${t('th.date')}</th>
+          <th>${t('th.subject')}</th>
+          <th>${t('th.examName')}</th>
+          <th>${t('th.score')}</th>
+          <th style="width:90px;">${t('th.classRank')}</th>
+          <th></th>
+        </tr></thead>
         <tbody>
           ${grades.length ? grades.map(g => {
             return `<tr>
@@ -59,11 +67,11 @@ function buildPage(grades) {
                   style="width:80px;padding:.2rem .4rem;font-size:.85rem;text-align:center;">
               </td>
               <td style="display:flex;gap:.4rem;">
-                <button class="btn btn-ghost btn-sm gr-edit-btn" data-id="${g.id}">編輯</button>
+                <button class="btn btn-ghost btn-sm gr-edit-btn" data-id="${g.id}">${t('btn.edit')}</button>
                 <button class="btn btn-danger btn-sm gr-del-btn" data-id="${g.id}">✕</button>
               </td>
             </tr>`;
-          }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text2);">尚無成績記錄</td></tr>'}
+          }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text2);">${t('grade.noGrades')}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -74,11 +82,11 @@ function buildModal(g) {
   g = g || {};
   return `
     <div class="modal-box">
-      <div class="modal-title">${g.id ? '編輯成績' : '新增成績'}</div>
+      <div class="modal-title">${g.id ? t('grade.editTitle') : t('grade.addTitle')}</div>
       <div class="form-group">
-        <label class="form-label">從考試倒數選擇（選填）</label>
+        <label class="form-label">${t('label.linkExam')}</label>
         <select id="gm-exam-pick" class="form-select">
-          <option value="">— 不連結考試 —</option>
+          <option value="">${t('label.noExamLink')}</option>
           ${exams.map(e => `<option value="${e.id}"
             data-name="${escHtml(e.title)}"
             data-date="${e.exam_date}"
@@ -89,41 +97,41 @@ function buildModal(g) {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">科目</label>
+        <label class="form-label">${t('label.subject')}</label>
         <select id="gm-subject" class="form-select">
           ${subjects.map(s => `<option value="${s.id}" ${g.subject_id==s.id?'selected':''}>${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">考試名稱</label>
-        <input id="gm-name" class="form-input" value="${escHtml(g.exam_name||'')}" placeholder="例：期中考">
+        <label class="form-label">${t('th.examName')}</label>
+        <input id="gm-name" class="form-input" value="${escHtml(g.exam_name||'')}" placeholder="${t('grade.addTitle')}…">
       </div>
       <div class="form-group">
-        <label class="form-label">日期</label>
+        <label class="form-label">${t('label.date')}</label>
         <input id="gm-date" type="date" class="form-input" value="${g.exam_date||''}">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
         <div class="form-group">
-          <label class="form-label">得分</label>
+          <label class="form-label">${t('label.score')}</label>
           <input id="gm-score" type="number" class="form-input" value="${g.score??''}" min="0">
         </div>
         <div class="form-group">
-          <label class="form-label">滿分</label>
+          <label class="form-label">${t('label.maxScore')}</label>
           <input id="gm-max" type="number" class="form-input" value="${g.max_score??100}" min="1">
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">班排名（選填）</label>
-        <input id="gm-rank" class="form-input" value="${escHtml(g.class_rank||'')}" placeholder="例：3 或 3/40">
+        <label class="form-label">${t('label.classRankOptional')}</label>
+        <input id="gm-rank" class="form-input" value="${escHtml(g.class_rank||'')}" placeholder="3 / 3/40">
       </div>
       <div class="form-group">
-        <label class="form-label">備註（選填）</label>
+        <label class="form-label">${t('label.notesOptional')}</label>
         <input id="gm-notes" class="form-input" value="${escHtml(g.notes||'')}">
       </div>
       <div class="modal-footer">
-        ${g.id ? `<button class="btn btn-danger btn-sm" id="gm-del">刪除</button>` : ''}
-        <button class="btn btn-ghost" id="gm-cancel">取消</button>
-        <button class="btn btn-primary" id="gm-save">儲存</button>
+        ${g.id ? `<button class="btn btn-danger btn-sm" id="gm-del">${t('btn.delete')}</button>` : ''}
+        <button class="btn btn-ghost" id="gm-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-primary" id="gm-save">${t('btn.save')}</button>
       </div>
     </div>`;
 }
@@ -162,14 +170,14 @@ async function save(el, existing) {
     class_rank: modal.querySelector('#gm-rank').value.trim() || null,
     notes: modal.querySelector('#gm-notes').value.trim() || null,
   };
-  if (!body.exam_name || !body.exam_date || isNaN(body.score)) return alert('請填寫必要欄位');
+  if (!body.exam_name || !body.exam_date || isNaN(body.score)) return alert(t('alert.fillRequired'));
   if (existing) await put('/grades/' + existing.id, body);
   else          await post('/grades', body);
   await refresh(el);
 }
 
 async function deleteGrade(el, id) {
-  if (!confirm('確定刪除？')) return;
+  if (!confirm(t('confirm.delete'))) return;
   await del('/grades/' + id);
   await refresh(el);
 }
@@ -226,13 +234,12 @@ function attachEvents(el, grades) {
     btn.onclick = () => deleteGrade(el, +btn.dataset.id);
   });
 
-  // Inline rank editing — save on blur or Enter
   el.querySelectorAll('.gr-rank-input').forEach(input => {
     const save = async () => {
       try {
         await put('/grades/' + input.dataset.id, { class_rank: input.value.trim() || null });
       } catch (e) {
-        alert('儲存失敗：' + e.message);
+        alert(t('alert.saveFailed', { msg: e.message }));
       }
     };
     input.addEventListener('blur', save);

@@ -9,20 +9,23 @@ import { render as renderSubjects }  from './subjects.js';
 import { render as renderPrint }     from './print.js';
 import { render as renderBadges }    from './badges.js';
 import { render as renderShop }      from './shop.js';
+import { t } from './i18n.js';
 
 const routes = {
-  dashboard: { title: '今日概覽',   fn: renderDashboard },
-  timetable: { title: '每週課表',   fn: renderTimetable },
-  calendar:  { title: '行事曆',     fn: renderCalendar  },
-  exams:     { title: '考試倒數',   fn: renderExams     },
-  chapters:  { title: '讀書進度',   fn: renderChapters  },
-  studylog:  { title: '讀書時間',   fn: renderStudylog  },
-  grades:    { title: '成績紀錄',   fn: renderGrades    },
-  badges:    { title: '我的徽章',   fn: renderBadges    },
-  shop:      { title: '獎勵商店',   fn: renderShop      },
-  subjects:  { title: '課程資訊',   fn: renderSubjects  },
-  print:     { title: '列印週計畫', fn: renderPrint     },
+  dashboard: { titleKey: 'nav.dashboard', fn: renderDashboard },
+  timetable: { titleKey: 'nav.timetable', fn: renderTimetable },
+  calendar:  { titleKey: 'nav.calendar',  fn: renderCalendar  },
+  exams:     { titleKey: 'nav.exams',     fn: renderExams     },
+  chapters:  { titleKey: 'nav.chapters',  fn: renderChapters  },
+  studylog:  { titleKey: 'nav.studylog',  fn: renderStudylog  },
+  grades:    { titleKey: 'nav.grades',    fn: renderGrades    },
+  badges:    { titleKey: 'nav.badges',    fn: renderBadges    },
+  shop:      { titleKey: 'nav.shop',      fn: renderShop      },
+  subjects:  { titleKey: 'nav.subjects',  fn: renderSubjects  },
+  print:     { titleKey: 'nav.print',     fn: renderPrint     },
 };
+
+let _currentHash = 'dashboard';
 
 export function navigate(hash) {
   location.hash = hash;
@@ -31,24 +34,34 @@ export function navigate(hash) {
 export function initRouter() {
   function route() {
     const hash = location.hash.slice(1) || 'dashboard';
+    _currentHash = hash;
     const view = document.getElementById('view');
     const titleEl = document.getElementById('page-title');
 
     const r = routes[hash];
     if (!r) { location.hash = 'dashboard'; return; }
 
-    // Update active nav
     document.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.route === hash);
     });
 
-    titleEl.textContent = r.title;
-    view.innerHTML = '<div class="empty-state"><div class="icon">⏳</div>載入中…</div>';
+    titleEl.textContent = t(r.titleKey);
+    view.innerHTML = `<div class="empty-state"><div class="icon">⏳</div>${t('app.loading')}</div>`;
     r.fn(view).catch(err => {
       view.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div>${err.message}</div>`;
     });
   }
 
   window.addEventListener('hashchange', route);
+
+  window.addEventListener('langchange', () => {
+    const view = document.getElementById('view');
+    const titleEl = document.getElementById('page-title');
+    const r = routes[_currentHash];
+    if (!r || !view) return;
+    if (titleEl) titleEl.textContent = t(r.titleKey);
+    r.fn(view).catch(() => {});
+  });
+
   route();
 }

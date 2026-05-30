@@ -1,3 +1,5 @@
+import { getLang, tErr } from './i18n.js';
+
 export function getUserId() { return localStorage.getItem('userId'); }
 export function getUserName() { return localStorage.getItem('userName'); }
 
@@ -14,7 +16,7 @@ export async function api(path, options = {}) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || '請求失敗');
+    throw new Error(tErr(err.error) || tErr('請求失敗'));
   }
   const data = await res.json();
   if (data.newBadges && data.newBadges.length > 0) {
@@ -33,10 +35,12 @@ export function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+const LOCALE_MAP = { 'zh-TW': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP' };
+
 export function fmtDate(d) {
   if (!d) return '';
   const dt = new Date(d + 'T00:00:00');
-  return dt.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dt.toLocaleDateString(LOCALE_MAP[getLang()] || 'zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 export function today() {

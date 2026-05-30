@@ -1,6 +1,6 @@
 import { get, post, put, del, escHtml } from './api.js';
+import { t } from './i18n.js';
 
-const DAYS = ['週一','週二','週三','週四','週五','週六','週日'];
 const PERIODS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 let subjects = [];
@@ -13,6 +13,10 @@ function currentPeriod() {
   if (m >= 9) return { year: roc, semester: 1 };
   if (m >= 2) return { year: roc - 1, semester: 2 };
   return { year: roc - 1, semester: 1 };
+}
+
+function DAYS() {
+  return [0,1,2,3,4,5,6].map(i => t(`day.${i}`));
 }
 
 export async function render(el) {
@@ -34,29 +38,30 @@ async function reloadSlots(el) {
 function yearOptions() {
   const rows = [];
   for (let y = 114; y <= 120; y++) {
-    rows.push(`<option value="${y}" ${y === currentYear ? 'selected' : ''}>民國 ${y} 學年度</option>`);
+    rows.push(`<option value="${y}" ${y === currentYear ? 'selected' : ''}>${t('tt.schoolYear', { y })}</option>`);
   }
   return rows.join('');
 }
 
 function buildPage() {
+  const days = DAYS();
   return `
     <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap;">
       <select id="tt-year-sel" class="form-select" style="width:auto;">
         ${yearOptions()}
       </select>
       <select id="tt-sem-sel" class="form-select" style="width:auto;">
-        <option value="1" ${currentSem === 1 ? 'selected' : ''}>第1學期（上學期）</option>
-        <option value="2" ${currentSem === 2 ? 'selected' : ''}>第2學期（下學期）</option>
+        <option value="1" ${currentSem === 1 ? 'selected' : ''}>${t('tt.sem1')}</option>
+        <option value="2" ${currentSem === 2 ? 'selected' : ''}>${t('tt.sem2')}</option>
       </select>
-      <span class="text-sm text-muted" style="margin-left:.25rem;">點格子新增，點課程編輯或刪除</span>
+      <span class="text-sm text-muted" style="margin-left:.25rem;">${t('tt.hint')}</span>
     </div>
     <div style="overflow-x:auto;">
       <table style="border-collapse:collapse;width:100%;min-width:600px;background:var(--bg2);border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);">
         <thead>
           <tr>
-            <th style="padding:.5rem .75rem;background:var(--bg3);border-bottom:1px solid var(--border);font-size:.8rem;color:var(--text2);width:60px;">節次</th>
-            ${DAYS.map(d => `<th style="padding:.5rem .75rem;background:var(--bg3);border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;text-align:center;border-left:1px solid var(--border);">${d}</th>`).join('')}
+            <th style="padding:.5rem .75rem;background:var(--bg3);border-bottom:1px solid var(--border);font-size:.8rem;color:var(--text2);width:60px;">${t('tt.periodHeader')}</th>
+            ${days.map(d => `<th style="padding:.5rem .75rem;background:var(--bg3);border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;text-align:center;border-left:1px solid var(--border);">${d}</th>`).join('')}
           </tr>
         </thead>
         <tbody>${buildTbody()}</tbody>
@@ -66,10 +71,11 @@ function buildPage() {
 }
 
 function buildTbody() {
+  const days = DAYS();
   return PERIODS.map(p => `
     <tr>
-      <td style="padding:.4rem .75rem;border-bottom:1px solid var(--border);text-align:center;color:var(--text2);font-size:.82rem;font-weight:600;background:var(--bg3);">第${p}節</td>
-      ${DAYS.map((_, d) => {
+      <td style="padding:.4rem .75rem;border-bottom:1px solid var(--border);text-align:center;color:var(--text2);font-size:.82rem;font-weight:600;background:var(--bg3);">${t('tt.period', { n: p })}</td>
+      ${days.map((_, d) => {
         const slot = slots.find(s => s.day_of_week === d && s.period === p);
         return `<td style="border-left:1px solid var(--border);border-bottom:1px solid var(--border);padding:.3rem;min-height:48px;cursor:pointer;transition:background .1s;"
           class="tt-cell" data-day="${d}" data-period="${p}" ${slot ? `data-slot-id="${slot.id}"` : ''}>
@@ -104,16 +110,17 @@ function attachCells(el) {
 }
 
 function buildModal(slot, day, period) {
+  const days = DAYS();
   const s = slot || {};
   return `
     <div class="modal-box">
       <div class="modal-title">${s.id
-        ? `編輯課程 — 民國 ${s.school_year} 學年度 第${s.semester}學期`
-        : `新增課程 — ${DAYS[day]} 第${period}節`}</div>
+        ? t('tt.editTitle', { y: s.school_year, sem: s.semester })
+        : t('tt.addTitle', { day: days[day], period })}</div>
       ${!subjects.length
-        ? `<div class="empty-state" style="padding:1rem;"><p>請先到「課程資訊」新增科目</p></div>`
+        ? `<div class="empty-state" style="padding:1rem;"><p>${t('tt.noSubject')}</p></div>`
         : `<div class="form-group">
-            <label class="form-label">科目</label>
+            <label class="form-label">${t('label.subject')}</label>
             <select id="tt-subject" class="form-select">
               ${subjects.map(sub => `<option value="${sub.id}" ${s.subject_id == sub.id ? 'selected' : ''}>${escHtml(sub.name)}</option>`).join('')}
             </select>
@@ -121,22 +128,22 @@ function buildModal(slot, day, period) {
       ${s.id ? '' : `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
           <div class="form-group">
-            <label class="form-label">星期</label>
+            <label class="form-label">${t('label.dayOfWeek')}</label>
             <select id="tt-day" class="form-select">
-              ${DAYS.map((d, i) => `<option value="${i}" ${day === i ? 'selected' : ''}>${d}</option>`).join('')}
+              ${days.map((d, i) => `<option value="${i}" ${day === i ? 'selected' : ''}>${d}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">節次</label>
+            <label class="form-label">${t('label.period')}</label>
             <select id="tt-period" class="form-select">
-              ${PERIODS.map(p => `<option value="${p}" ${period === p ? 'selected' : ''}>第${p}節</option>`).join('')}
+              ${PERIODS.map(p => `<option value="${p}" ${period === p ? 'selected' : ''}>${t('tt.period', { n: p })}</option>`).join('')}
             </select>
           </div>
         </div>`}
       <div class="modal-footer">
-        ${s.id ? `<button class="btn btn-danger btn-sm" id="tt-del-btn">刪除</button>` : ''}
-        <button class="btn btn-ghost" id="tt-cancel-btn">取消</button>
-        ${subjects.length ? `<button class="btn btn-primary" id="tt-save-btn">儲存</button>` : ''}
+        ${s.id ? `<button class="btn btn-danger btn-sm" id="tt-del-btn">${t('btn.delete')}</button>` : ''}
+        <button class="btn btn-ghost" id="tt-cancel-btn">${t('btn.cancel')}</button>
+        ${subjects.length ? `<button class="btn btn-primary" id="tt-save-btn">${t('btn.save')}</button>` : ''}
       </div>
     </div>`;
 }
@@ -173,7 +180,7 @@ async function saveSlot(el, existing, defaultDay, defaultPeriod) {
 }
 
 async function deleteSlot(el, id) {
-  if (!confirm('確定刪除這個課程？')) return;
+  if (!confirm(t('confirm.deleteSlot'))) return;
   await del('/timetable/' + id);
   el.querySelector('#tt-modal').classList.add('hidden');
   await reloadSlots(el);
