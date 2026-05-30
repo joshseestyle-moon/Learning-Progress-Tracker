@@ -6,6 +6,10 @@ const BADGES  = require('../badges/definitions');
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const VALID_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
+function getBalance(userId) {
+  return db.prepare('SELECT COALESCE(SUM(delta),0) AS total FROM point_log WHERE user_id = ?').get(userId).total;
+}
+
 // ── System badges ──────────────────────────────────────────────
 router.get('/', userCtx, (req, res) => {
   const earned = db.prepare(
@@ -47,6 +51,14 @@ router.get('/', userCtx, (req, res) => {
   res.json([...system, ...custom]);
 });
 
+// ── Exchange history ───────────────────────────────────────────
+router.get('/exchanges', userCtx, (req, res) => {
+  const rows = db.prepare(
+    'SELECT * FROM badge_exchange_log WHERE user_id = ? ORDER BY exchanged_at DESC'
+  ).all(req.userId);
+  res.json(rows);
+});
+
 // ── Custom badge CRUD ──────────────────────────────────────────
 router.post('/custom', userCtx, (req, res) => {
   const name     = (req.body.name || '').trim();
@@ -67,7 +79,7 @@ router.delete('/custom/:id', userCtx, (req, res) => {
   const row = db.prepare('SELECT id FROM custom_badges WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!row) return res.status(404).json({ error: '成就不存在' });
   // Revoke any points awarded for this badge so they can't be re-earned after recreation
-  db.prepare("DELETE FROM point_log WHERE user_id = ? AND reason = ?").run(req.userId, 'custom_badge:' + req.params.id);
+  db.prepare("DELETE FROM point_log WHERE user_id = ? AND reason = ?").run(req.userId, 'exchange:custom_' + req.params.id);
   db.prepare('DELETE FROM custom_badges WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -82,11 +94,52 @@ router.post('/custom/:id/earn', userCtx, (req, res) => {
   if (already) return res.status(400).json({ error: '已完成此成就' });
 
   db.prepare('INSERT INTO custom_badge_earned (user_id, custom_badge_id) VALUES (?, ?)').run(req.userId, req.params.id);
-  if (row.points > 0) {
-    db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, row.points, 'custom_badge:' + row.id);
-  }
 
-  res.json({ ok: true, points: row.points });
+  res.json({ ok: true, icon: row.icon, name: row.name });
+});
+
+// ── Exchange: custom badge → points ───────────────────────────
+router.post('/custom/:id/exchange', userCtx, (req, res) => {
+  const row = db.prepare('SELECT * FROM custom_badges WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!row) return res.status(404).json({ error: '成就不存在' });
+
+  const earned = db.prepare(
+    'SELECT id FROM custom_badge_earned WHERE user_id = ? AND custom_badge_id = ?'
+  ).get(req.userId, req.params.id);
+  if (!earned) return res.status(400).json({ error: '尚未達成此成就' });
+
+  const exchangeTx = db.transaction(() => {
+    db.prepare('DELETE FROM custom_badge_earned WHERE user_id = ? AND custom_badge_id = ?').run(req.userId, req.params.id);
+    if (row.points > 0) {
+      db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, row.points, 'exchange:custom_' + row.id);
+    }
+    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points) VALUES (?, ?, ?, ?, ?)').run(req.userId, 'custom_' + row.id, row.name, row.icon, row.points);
+    return getBalance(req.userId);
+  });
+
+  res.json({ ok: true, points: exchangeTx() });
+});
+
+// ── Exchange: system badge → points ───────────────────────────
+router.post('/:badgeId/exchange', userCtx, (req, res) => {
+  const def = BADGES.find(b => b.id === req.params.badgeId);
+  if (!def) return res.status(404).json({ error: '徽章不存在' });
+
+  const earned = db.prepare(
+    'SELECT id FROM user_badges WHERE user_id = ? AND badge_id = ?'
+  ).get(req.userId, req.params.badgeId);
+  if (!earned) return res.status(400).json({ error: '尚未達成此徽章' });
+
+  const points = RARITY_PTS[def.rarity] || 10;
+
+  const exchangeTx = db.transaction(() => {
+    db.prepare('DELETE FROM user_badges WHERE user_id = ? AND badge_id = ?').run(req.userId, req.params.badgeId);
+    db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, points, 'exchange:' + def.id);
+    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points) VALUES (?, ?, ?, ?, ?)').run(req.userId, def.id, def.name, def.icon, points);
+    return getBalance(req.userId);
+  });
+
+  res.json({ ok: true, points: exchangeTx() });
 });
 
 module.exports = router;

@@ -28,10 +28,7 @@ function checkBadges(userId) {
     db.prepare('INSERT OR IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)').run(userId, badgeId);
     earned.add(badgeId);
     const def = BADGES.find(b => b.id === badgeId);
-    if (def) {
-      newlyEarned.push(def);
-      db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(userId, RARITY_PTS[def.rarity] || 10, 'badge:' + badgeId);
-    }
+    if (def) newlyEarned.push(def);
   }
 
   // ── 習慣類 ──

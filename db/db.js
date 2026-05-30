@@ -250,6 +250,23 @@ function openAndMigrate() {
     db.exec("ALTER TABLE custom_badges ADD COLUMN category TEXT NOT NULL DEFAULT '自訂'");
   }
 
+  // Migration 14: badge exchange log
+  const hasExchangeLog = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='badge_exchange_log'").get();
+  if (!hasExchangeLog) {
+    db.exec(`
+      CREATE TABLE badge_exchange_log (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        badge_id     TEXT    NOT NULL,
+        badge_name   TEXT    NOT NULL,
+        badge_icon   TEXT    NOT NULL,
+        points       INTEGER NOT NULL,
+        exchanged_at TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_badge_exchange_log_user ON badge_exchange_log(user_id);
+    `);
+  }
+
   return db;
 }
 

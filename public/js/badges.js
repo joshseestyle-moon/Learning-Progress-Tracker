@@ -6,11 +6,15 @@ const ALL_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
 let _el = null;
 let _badges = [];
+let _exchanges = [];
 let _showForm = false;
 let _formError = '';
 
 async function load() {
-  _badges = await get('/badges');
+  [_badges, _exchanges] = await Promise.all([
+    get('/badges'),
+    get('/badges/exchanges'),
+  ]);
 }
 
 function fmtDate(str) {
@@ -25,6 +29,14 @@ function badgeCard(b) {
   const ptsChip = `<span style="font-size:.65rem;color:#d4a010;font-weight:600">⭐ ${b.points} 點</span>`;
 
   if (b.earned) {
+    const exchangeId = b.custom ? b._db_id : b.id;
+    const exchangeType = b.custom ? 'custom' : 'system';
+    const exchangeBtn = b.points > 0 ? `
+      <button onclick="badgeExchange('${exchangeType}', '${exchangeId}', ${b.points})"
+        style="margin-top:.15rem;padding:.22rem .55rem;font-size:.65rem;border:1px solid #e67e22;
+               border-radius:4px;color:#e67e22;background:transparent;cursor:pointer;font-weight:600">
+        換 ${b.points} 點
+      </button>` : '';
     const actions = b.custom ? `
       <button onclick="badgeDeleteCustom(${b._db_id})"
         style="margin-top:.2rem;padding:.2rem .5rem;font-size:.65rem;border:1px solid var(--border);
@@ -41,6 +53,7 @@ function badgeCard(b) {
           ${ptsChip}
         </div>
         ${earnedAt ? `<div style="font-size:.65rem;color:var(--text3)">✓ ${earnedAt}</div>` : ''}
+        ${exchangeBtn}
         ${actions}
       </div>`;
   }
@@ -196,6 +209,26 @@ function renderPage() {
         }
       </div>
 
+      ${_exchanges.length > 0 ? `
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:.78rem;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:.75rem;padding-left:.1rem">換點數紀錄</div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          ${_exchanges.map(r => {
+            const d = new Date(r.exchanged_at);
+            const dateStr = d.toLocaleDateString('zh-TW', { year:'numeric', month:'2-digit', day:'2-digit' });
+            return `
+              <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .9rem;border-bottom:1px solid var(--border)">
+                <span style="font-size:1.3rem;flex-shrink:0">${r.badge_icon}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.85rem;font-weight:600;color:var(--text)">${escHtml(r.badge_name)}</div>
+                  <div style="font-size:.72rem;color:var(--text3)">${dateStr}</div>
+                </div>
+                <div style="font-size:.82rem;font-weight:600;color:var(--success);white-space:nowrap">+${r.points} 點</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
+
     </div>`;
 }
 
@@ -261,12 +294,22 @@ window.badgeEarnCustom = async function(dbId) {
     const res = await post('/badges/custom/' + dbId + '/earn', {});
     await load();
     renderPage();
-    if (res.points > 0) {
-      const earnedBadge = _badges.find(b => b.custom && b._db_id === dbId);
-      window.dispatchEvent(new CustomEvent('badge-earned', {
-        detail: [{ icon: earnedBadge?.icon || '🏅', name: earnedBadge?.name || '自訂成就完成', desc: `獲得 ${res.points} 點`, rarity: 'custom' }]
-      }));
-    }
+    window.dispatchEvent(new CustomEvent('badge-earned', {
+      detail: [{ icon: res.icon || '🏅', name: res.name || '自訂成就完成', desc: '成就達成！可換點數', rarity: 'custom' }]
+    }));
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+window.badgeExchange = async function(type, badgeId, points) {
+  const path = type === 'custom'
+    ? '/badges/custom/' + badgeId + '/exchange'
+    : '/badges/' + badgeId + '/exchange';
+  try {
+    await post(path, {});
+    await load();
+    renderPage();
   } catch (e) {
     alert(e.message);
   }
