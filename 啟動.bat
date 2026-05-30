@@ -9,6 +9,11 @@ echo       Learning Manager  Starting...
 echo  ============================================
 echo.
 
+:: ── 停止舊服務（僅 port 3000 的 PID）──────────────
+netstat -ano 2>nul | findstr ":3000 " > "%TEMP%\_kill3000.tmp"
+for /f "usebackq tokens=5" %%P in ("%TEMP%\_kill3000.tmp") do taskkill /F /PID %%P >nul 2>&1
+del "%TEMP%\_kill3000.tmp" >nul 2>&1
+
 :: ── 判斷版本：可攜版 or 安裝版 ──────────────────
 if exist "%~dp0node\node.exe" (
     set "NODE=node\node.exe"

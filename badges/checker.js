@@ -23,13 +23,14 @@ function checkBadges(userId) {
 
   const newlyEarned = [];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
   function award(badgeId) {
     if (earned.has(badgeId)) return;
-    // Once exchanged today, cannot re-earn until tomorrow
+    // Once exchanged today, cannot re-earn until tomorrow (local calendar day)
     const exchangedToday = db.prepare(
-      "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at) = ?"
+      "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at, 'localtime') = ?"
     ).get(userId, badgeId, today);
     if (exchangedToday) return;
     db.prepare('INSERT OR IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)').run(userId, badgeId);

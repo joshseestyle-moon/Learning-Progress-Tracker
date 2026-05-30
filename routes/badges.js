@@ -93,9 +93,10 @@ router.post('/custom/:id/earn', userCtx, (req, res) => {
   ).get(req.userId, req.params.id);
   if (already) return res.status(400).json({ error: '已完成此成就' });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const _d = new Date();
+  const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   const exchangedToday = db.prepare(
-    "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at) = ?"
+    "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at, 'localtime') = ?"
   ).get(req.userId, 'custom_' + req.params.id, today);
   if (exchangedToday) return res.status(400).json({ error: '今天已兌換過此成就，明天才能再次達成' });
 

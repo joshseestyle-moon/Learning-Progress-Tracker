@@ -153,10 +153,11 @@ npm install
 **方式一：雙擊批次檔（推薦）**
 
 雙擊 `啟動.bat`，腳本會自動：
-1. 判斷是可攜版（`node\node.exe`）或安裝版（系統 PATH）
-2. 若缺 `node_modules` 自動執行 `npm install`
-3. 顯示本機與區網連線位址
-4. 2 秒後自動開啟瀏覽器
+1. 終止占用 port 3000 的舊行程（僅 kill 該 PID，不影響其他 node 行程）
+2. 判斷是可攜版（`node\node.exe`）或安裝版（系統 PATH）
+3. 若缺 `node_modules` 自動執行 `npm install`
+4. 顯示本機與區網連線位址
+5. 2 秒後自動開啟瀏覽器
 
 **方式二：命令列**
 
@@ -674,7 +675,7 @@ subjects ──┬── timetable_slots
 
 前端 `api.js` 自動偵測回應中的 `newBadges` 欄位，觸發 `badge-earned` CustomEvent，`app.html` 監聽後顯示右下角 toast 通知。
 
-**兌換限制**：同一徽章當天已兌換後，`badge_exchange_log` 中有當日記錄，`checkBadges()` 不再重新頒發，需隔天才能再次獲得。
+**兌換限制**：同一徽章當天已兌換後，`badge_exchange_log` 中有當日記錄，`checkBadges()` 不再重新頒發，需隔天才能再次獲得。「當天」以伺服器本地日期為準（`date(exchanged_at, 'localtime')`），非 UTC。
 
 ---
 
