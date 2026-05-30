@@ -245,8 +245,9 @@ window.badgeEarnCustom = async function(dbId) {
     await load();
     renderPage();
     if (res.points > 0) {
+      const earnedBadge = _badges.find(b => b.custom && b._db_id === dbId);
       window.dispatchEvent(new CustomEvent('badge-earned', {
-        detail: [{ icon: '🏅', name: '自訂成就完成', desc: `獲得 ${res.points} 點`, rarity: 'custom' }]
+        detail: [{ icon: earnedBadge?.icon || '🏅', name: earnedBadge?.name || '自訂成就完成', desc: `獲得 ${res.points} 點`, rarity: 'custom' }]
       }));
     }
   } catch (e) {

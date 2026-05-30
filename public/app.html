@@ -101,7 +101,7 @@
   function showBadgeToast(badge) {
     const wrap = document.getElementById('badge-toast-wrap');
     const el = document.createElement('div');
-    const rarityColor = { common: '#6c8ebf', uncommon: '#4a90d9', rare: '#9b59b6', epic: '#f39c12' }[badge.rarity] || '#6c8ebf';
+    const rarityColor = { common: '#6c8ebf', uncommon: '#4a90d9', rare: '#9b59b6', epic: '#f39c12', custom: '#27ae60' }[badge.rarity] || '#6c8ebf';
     el.style.cssText = `
       background:var(--bg2);border:2px solid ${rarityColor};border-radius:12px;
       padding:.7rem 1rem;display:flex;align-items:center;gap:.7rem;

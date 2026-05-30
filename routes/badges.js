@@ -64,6 +64,8 @@ router.post('/custom', userCtx, (req, res) => {
 router.delete('/custom/:id', userCtx, (req, res) => {
   const row = db.prepare('SELECT id FROM custom_badges WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!row) return res.status(404).json({ error: '成就不存在' });
+  // Revoke any points awarded for this badge so they can't be re-earned after recreation
+  db.prepare("DELETE FROM point_log WHERE user_id = ? AND reason = ?").run(req.userId, 'custom_badge:' + req.params.id);
   db.prepare('DELETE FROM custom_badges WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });

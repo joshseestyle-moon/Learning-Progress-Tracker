@@ -30,14 +30,20 @@ router.delete('/items/:id', userCtx, (req, res) => {
   res.json({ ok: true });
 });
 
+const redeemTx = db.transaction((userId, item) => {
+  const balance = getBalance(userId);
+  if (balance < item.cost) return null;
+  db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(userId, -item.cost, 'redeem:' + item.id);
+  db.prepare('INSERT INTO redemption_log (user_id, item_name, cost) VALUES (?, ?, ?)').run(userId, item.name, item.cost);
+  return balance - item.cost;
+});
+
 router.post('/redeem/:id', userCtx, (req, res) => {
   const item = db.prepare('SELECT * FROM reward_items WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!item) return res.status(404).json({ error: '獎勵不存在' });
-  const balance = getBalance(req.userId);
-  if (balance < item.cost) return res.status(400).json({ error: '點數不足' });
-  db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, -item.cost, 'redeem:' + item.id);
-  db.prepare('INSERT INTO redemption_log (user_id, item_name, cost) VALUES (?, ?, ?)').run(req.userId, item.name, item.cost);
-  res.json({ ok: true, points: balance - item.cost });
+  const newBalance = redeemTx(req.userId, item);
+  if (newBalance === null) return res.status(400).json({ error: '點數不足' });
+  res.json({ ok: true, points: newBalance });
 });
 
 router.get('/history', userCtx, (req, res) => {

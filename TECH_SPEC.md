@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.4　　最後更新：2026-05-30  
+> 版本：2.5　　最後更新：2026-05-30  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -452,6 +452,19 @@ db.prepare(`
 `).all(req.userId, req.userId);  ← 兩個參數
 ```
 
+### 自訂成就點數防刷
+
+刪除自訂成就時同步刪除對應的 `point_log` 記錄，防止「建立→獲得→刪除→重建」循環刷點：
+
+```js
+// routes/badges.js — DELETE /custom/:id
+db.prepare("DELETE FROM point_log WHERE user_id = ? AND reason = ?")
+  .run(req.userId, 'custom_badge:' + req.params.id);
+db.prepare('DELETE FROM custom_badges WHERE id = ?').run(req.params.id);
+```
+
+`custom_badge_earned` 由 FK CASCADE 自動刪除；`point_log` 無 FK 指向 `custom_badges`，需手動清除。
+
 ### CSRF 考量
 
 本系統為**本機局域網路專用工具**，無需標準 Web 的 CSRF token 機制。
@@ -492,6 +505,22 @@ db.prepare('SELECT * FROM assignments WHERE user_id = ? ORDER BY due_date')
 |---|---|
 | `exams` | grades.exam_id |
 | `chapters` | study_log.chapter_id |
+
+### 兌換原子性（Atomic Redeem）
+
+`POST /shop/redeem/:id` 的餘額確認與點數扣除使用 `db.transaction()` 包裹，防止並發請求（如雙 tab 同時點擊「兌換」）導致餘額為負：
+
+```js
+const redeemTx = db.transaction((userId, item) => {
+  const balance = getBalance(userId);   // SELECT SUM(delta)
+  if (balance < item.cost) return null; // 不足則 rollback
+  db.prepare('INSERT INTO point_log ...').run(userId, -item.cost, 'redeem:' + item.id);
+  db.prepare('INSERT INTO redemption_log ...').run(userId, item.name, item.cost);
+  return balance - item.cost;
+});
+```
+
+better-sqlite3 的 transaction 在 SQLite 層面使用 `BEGIN IMMEDIATE`，確保同一連線的並發讀寫序列化。
 
 ### CHECK 約束
 
@@ -1526,4 +1555,4 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 
 ---
 
-*本文件反映截至 2026-05-30 的實作狀態（v2.4）。*
+*本文件反映截至 2026-05-30 的實作狀態（v2.5）。*

@@ -193,7 +193,10 @@ export async function render(el) {
 
   if (!state.items.length && !state.history.length && state.points === 0) {
     el.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--text3)">載入中…</div>`;
-    try { await loadAll(); } catch (e) { /* ignore */ }
+    try { await loadAll(); } catch (e) {
+      el.innerHTML = `<div class="card"><p style="color:var(--danger)">載入失敗：${e.message}</p></div>`;
+      return;
+    }
   }
 
   el.innerHTML = `
