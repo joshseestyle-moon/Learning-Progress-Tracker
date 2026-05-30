@@ -1,4 +1,6 @@
-import { get, escHtml, fmtDate, today } from './api.js';
+import { get, patch, escHtml, fmtDate, today } from './api.js';
+
+let _el = null;
 
 function tomorrow() {
   const d = new Date();
@@ -7,6 +9,7 @@ function tomorrow() {
 }
 
 export async function render(el) {
+  _el = el;
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
@@ -141,12 +144,12 @@ function overdueCard(items) {
     const daysLate  = Math.floor((new Date(today() + 'T00:00:00') - new Date(p.scheduled_date + 'T00:00:00')) / 86400000);
     const lateColor = daysLate >= 7 ? 'var(--danger)' : '#e67e22';
     return `
-    <div onclick="navigate('chapters')" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;cursor:pointer;
-                  border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;transition:background .12s;"
-         onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-      <span style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;border-radius:50%;
-                   border:2px solid ${lateColor};background:transparent;display:flex;align-items:center;
-                   justify-content:center;font-size:.65rem;color:${lateColor};">!</span>
+    <div data-prog-id="${p.id}" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;
+                  border-radius:var(--radius-sm);padding:.3rem .4rem .3rem .2rem;">
+      <button onclick="dashToggleProgress('${p.id}', true)" title="標記為完成"
+        style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
+               border:2px solid ${lateColor};background:transparent;display:flex;align-items:center;
+               justify-content:center;font-size:.65rem;color:${lateColor};cursor:pointer;padding:0;">!</button>
       <div style="min-width:0;flex:1;">
         <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
           <span class="badge" style="background:${p.subject_color}">${escHtml(p.subject_name)}</span>
@@ -166,12 +169,14 @@ function studyCard(items, emptyMsg) {
     const typeLabel = isPreview ? '預習' : '複習';
     const color     = isPreview ? 'var(--accent)' : 'var(--success)';
     return `
-    <div style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
-      <span style="margin-top:.2rem;width:16px;height:16px;flex-shrink:0;border-radius:50%;
-                   border:2px solid ${color};background:${p.is_done ? color : 'transparent'};
-                   display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;">
+    <div data-prog-id="${p.id}" style="display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.7rem;${p.is_done ? 'opacity:.55;' : ''}">
+      <button onclick="dashToggleProgress('${p.id}', false)" title="${p.is_done ? '標記為未完成' : '標記為完成'}"
+        style="margin-top:.2rem;width:18px;height:18px;flex-shrink:0;border-radius:50%;
+               border:2px solid ${color};background:${p.is_done ? color : 'transparent'};
+               display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;
+               cursor:pointer;padding:0;">
         ${p.is_done ? '✓' : ''}
-      </span>
+      </button>
       <div style="min-width:0;">
         <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
           <span class="badge" style="background:${p.subject_color}">${escHtml(p.subject_name)}</span>
@@ -183,3 +188,37 @@ function studyCard(items, emptyMsg) {
     </div>`;
   }).join('');
 }
+
+// ── Global handler (called from inline onclick in studyCard / overdueCard) ──
+
+window.dashToggleProgress = async function(progressId, removeOnDone) {
+  const row = document.querySelector(`[data-prog-id="${progressId}"]`);
+  if (!row) return;
+  const btn = row.querySelector('button');
+
+  btn.disabled = true;
+  btn.style.opacity = '.4';
+
+  try {
+    await patch('/chapters/progress/' + progressId, { toggle_done: true });
+    if (removeOnDone) {
+      // Overdue item: fade out then remove; show empty message if list is now empty
+      row.style.transition = 'opacity .25s';
+      row.style.opacity = '0';
+      setTimeout(() => {
+        const parent = row.parentElement;
+        row.remove();
+        if (parent && !parent.querySelector('[data-prog-id]')) {
+          parent.innerHTML = `<div style="font-size:.85rem;color:var(--success);">✓ 目前沒有待完成項目</div>`;
+        }
+      }, 260);
+    } else {
+      // Study card: re-render dashboard so done state and opacity refresh correctly
+      if (_el) render(_el);
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.style.opacity = '';
+    alert('更新失敗：' + e.message);
+  }
+};
