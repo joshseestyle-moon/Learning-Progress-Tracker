@@ -273,6 +273,42 @@ function openAndMigrate() {
     db.exec("ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'zh-TW'");
   }
 
+  // Migration 16: daily tasks (free-form homework checklist)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_tasks (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      task_date  TEXT NOT NULL,
+      title      TEXT NOT NULL,
+      is_done    INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_tasks_user_date ON daily_tasks(user_id, task_date);
+  `);
+
+  // Migration 17: add subject_id to daily_tasks + parts table
+  const dtCols = db.pragma('table_info(daily_tasks)').map(c => c.name);
+  if (!dtCols.includes('subject_id')) {
+    db.exec('ALTER TABLE daily_tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL');
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_task_parts (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id  INTEGER NOT NULL REFERENCES daily_tasks(id) ON DELETE CASCADE,
+      part_num INTEGER NOT NULL,
+      is_done  INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(task_id, part_num)
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_task_parts_task ON daily_task_parts(task_id);
+  `);
+  // Backfill: create part 1 for any existing task that has no parts
+  const orphanTasks = db.prepare(`
+    SELECT id, is_done FROM daily_tasks
+    WHERE NOT EXISTS (SELECT 1 FROM daily_task_parts p WHERE p.task_id = daily_tasks.id)
+  `).all();
+  const bfPart = db.prepare('INSERT OR IGNORE INTO daily_task_parts (task_id, part_num, is_done) VALUES (?, 1, ?)');
+  for (const t of orphanTasks) bfPart.run(t.id, t.is_done);
+
   return db;
 }
 

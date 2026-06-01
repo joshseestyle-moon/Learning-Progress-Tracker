@@ -2,6 +2,7 @@ import { render as renderDashboard } from './dashboard.js';
 import { render as renderTimetable } from './timetable.js';
 import { render as renderCalendar }  from './calendar.js';
 import { render as renderExams }     from './exams.js';
+import { render as renderHomework }  from './homework.js';
 import { render as renderChapters }  from './chapters.js';
 import { render as renderStudylog }  from './studylog.js';
 import { render as renderGrades }    from './grades.js';
@@ -16,6 +17,7 @@ const routes = {
   timetable: { titleKey: 'nav.timetable', fn: renderTimetable },
   calendar:  { titleKey: 'nav.calendar',  fn: renderCalendar  },
   exams:     { titleKey: 'nav.exams',     fn: renderExams     },
+  homework:  { titleKey: 'nav.homework',  fn: renderHomework  },
   chapters:  { titleKey: 'nav.chapters',  fn: renderChapters  },
   studylog:  { titleKey: 'nav.studylog',  fn: renderStudylog  },
   grades:    { titleKey: 'nav.grades',    fn: renderGrades    },

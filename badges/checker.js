@@ -79,6 +79,23 @@ function checkBadges(userId) {
   `).get(userId, userId).c;
   if (subjectComplete >= 1) award('subject_complete');
 
+  // ── 作業類 ──
+  // Dates where user had ≥1 task and all were done
+  const hwDoneDates = db.prepare(`
+    SELECT task_date FROM daily_tasks
+    WHERE user_id = ?
+    GROUP BY task_date
+    HAVING COUNT(*) > 0 AND SUM(CASE WHEN is_done = 0 THEN 1 ELSE 0 END) = 0
+    ORDER BY task_date ASC
+  `).all(userId).map(r => r.task_date);
+
+  if (hwDoneDates.length >= 1)  award('hw_day_1');
+  if (hwDoneDates.length >= 10) award('hw_days_10');
+
+  const hwStreak = computeMaxStreak(hwDoneDates);
+  if (hwStreak >= 3) award('hw_streak_3');
+  if (hwStreak >= 7) award('hw_streak_7');
+
   // ── 成績類 ──
   const gradeCount = db.prepare('SELECT COUNT(*) AS c FROM grades WHERE user_id = ?').get(userId).c;
   if (gradeCount >= 1) award('first_grade');

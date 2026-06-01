@@ -15,6 +15,11 @@ module.exports = [
   { id: 'first_chapter',    category: '完成',  icon: '📖', name: '初探知識',   desc: '完成第一個章節的預習或複習',   rarity: 'common'   },
   { id: 'chapters_10',      category: '完成',  icon: '🗺️', name: '知識探索者', desc: '累積完成10個章節進度',         rarity: 'uncommon' },
   { id: 'subject_complete', category: '完成',  icon: '🏆', name: '科目征服者', desc: '完成某科所有章節的預習',       rarity: 'rare'     },
+  // ── 作業類 ──
+  { id: 'hw_day_1',      category: '完成',  icon: '📋', name: '盡責開始',   desc: '第一次完成當天所有作業',         rarity: 'common'   },
+  { id: 'hw_streak_3',   category: '完成',  icon: '📌', name: '作業達人',   desc: '連續3天完成所有作業',            rarity: 'uncommon' },
+  { id: 'hw_streak_7',   category: '完成',  icon: '🥇', name: '作業之星',   desc: '連續7天完成所有作業',            rarity: 'rare'     },
+  { id: 'hw_days_10',    category: '完成',  icon: '🎖️', name: '毅力勇者',   desc: '累積10天完成所有作業',           rarity: 'uncommon' },
   // ── 成績類 ──
   { id: 'first_grade',      category: '成績',  icon: '📝', name: '首次出征',   desc: '第一次記錄成績',               rarity: 'common'   },
   { id: 'perfect_score',    category: '成績',  icon: '💯', name: '完美主義',   desc: '某次考試達滿分',               rarity: 'epic'     },

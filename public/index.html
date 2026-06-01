@@ -27,6 +27,25 @@
   <input type="file" id="import-input" accept=".db" style="display:none" onchange="importData(this)">
 </div>
 
+<!-- Edit user modal -->
+<div id="edit-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-title">編輯帳號</div>
+    <div class="form-group">
+      <label class="form-label">姓名</label>
+      <input id="edit-name" class="form-input" placeholder="請輸入姓名" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label class="form-label">頭像顏色</label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;" id="edit-color-picker"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeEditModal()">取消</button>
+      <button class="btn btn-primary" onclick="submitEditUser()">儲存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add user modal -->
 <div id="add-modal" class="modal-overlay hidden">
   <div class="modal-box">
@@ -78,17 +97,24 @@ async function loadProfiles() {
   grid.innerHTML = users.map(u => `
     <div class="profile-card" style="position:relative;" onclick="${editMode ? '' : `selectUser(${u.id}, '${escHtml(u.name)}', '${u.lang || 'zh-TW'}')`}" data-id="${u.id}">
       ${editMode ? `
+        <button onclick="openEditModal(event, ${u.id}, '${escHtml(u.name)}', '${u.avatar_color}')"
+          style="position:absolute;top:6px;left:6px;
+                 width:24px;height:24px;border-radius:50%;
+                 background:var(--accent);color:#fff;
+                 font-size:.8rem;font-weight:700;
+                 display:flex;align-items:center;justify-content:center;
+                 border:none;cursor:pointer;z-index:1;" title="編輯名稱">✏</button>
         <button onclick="deleteUser(event, ${u.id}, '${escHtml(u.name)}')"
           style="position:absolute;top:6px;right:6px;
                  width:24px;height:24px;border-radius:50%;
                  background:var(--danger);color:#fff;
                  font-size:.8rem;font-weight:700;
                  display:flex;align-items:center;justify-content:center;
-                 border:none;cursor:pointer;z-index:1;">✕</button>` : ''}
+                 border:none;cursor:pointer;z-index:1;" title="刪除帳號">✕</button>` : ''}
       <div class="avatar" style="background:${u.avatar_color}">${u.name.charAt(0).toUpperCase()}</div>
       <span class="name">${escHtml(u.name)}</span>
       ${u.is_admin ? '<span style="font-size:.7rem;color:var(--accent)">管理員</span>' : ''}
-      ${editMode ? '<span style="font-size:.7rem;color:var(--danger);">點卡片以外區域刪除</span>' : ''}
+      ${editMode ? '<span style="font-size:.7rem;color:var(--text2);">✏ 編輯 ／ ✕ 刪除</span>' : ''}
     </div>`).join('');
 }
 
@@ -107,7 +133,7 @@ function toggleEditMode() {
   btn.textContent = editMode ? '✅ 完成編輯' : '✏️ 編輯帳號';
   btn.style.background = editMode ? 'var(--danger)' : '';
   btn.style.color = editMode ? '#fff' : '';
-  hint.textContent = editMode ? '點選 ✕ 刪除帳號，點「完成編輯」退出' : '點選你的名字進入系統';
+  hint.textContent = editMode ? '點 ✏ 修改名稱，點 ✕ 刪除帳號，點「完成編輯」退出' : '點選你的名字進入系統';
   loadProfiles();
 }
 
@@ -115,6 +141,46 @@ async function deleteUser(event, id, name) {
   event.stopPropagation();
   if (!confirm(`確定刪除「${name}」的帳號？\n此帳號的所有資料（作業、考試、成績等）將一併刪除，無法復原。`)) return;
   await fetch('/api/users/' + id, { method: 'DELETE' });
+  loadProfiles();
+}
+
+let editingUserId = null;
+let editSelectedColor = COLORS[0];
+
+function initEditColorPicker() {
+  const el = document.getElementById('edit-color-picker');
+  el.innerHTML = COLORS.map(c => `
+    <div onclick="selectEditColor('${c}')"
+      style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;
+             border:3px solid ${c === editSelectedColor ? '#fff' : 'transparent'};
+             box-shadow:${c === editSelectedColor ? '0 0 0 2px var(--accent)' : 'none'};
+             transition:.1s;flex-shrink:0;"></div>`).join('');
+}
+function selectEditColor(c) { editSelectedColor = c; initEditColorPicker(); }
+
+function openEditModal(event, id, name, color) {
+  event.stopPropagation();
+  editingUserId = id;
+  editSelectedColor = color;
+  document.getElementById('edit-name').value = name;
+  initEditColorPicker();
+  document.getElementById('edit-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('edit-name').focus(), 50);
+}
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  editingUserId = null;
+}
+
+async function submitEditUser() {
+  const name = document.getElementById('edit-name').value.trim();
+  if (!name) return alert('請輸入姓名');
+  await fetch('/api/users/' + editingUserId, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, avatar_color: editSelectedColor })
+  });
+  closeEditModal();
   loadProfiles();
 }
 
@@ -185,9 +251,12 @@ document.documentElement.setAttribute('data-theme', localStorage.getItem('theme'
 loadProfiles();
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !document.getElementById('add-modal').classList.contains('hidden'))
-    submitAddUser();
+  if (e.key === 'Enter') {
+    if (!document.getElementById('add-modal').classList.contains('hidden')) submitAddUser();
+    else if (!document.getElementById('edit-modal').classList.contains('hidden')) submitEditUser();
+  }
   if (e.key === 'Escape') {
+    if (!document.getElementById('edit-modal').classList.contains('hidden')) { closeEditModal(); return; }
     closeAddModal();
     if (editMode) { editMode = false; toggleEditMode(); }
   }

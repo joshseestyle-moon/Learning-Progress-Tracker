@@ -14,13 +14,14 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters;
+  let timetable, exams, scheduled, chapters, dailyTasks;
   try {
-    [timetable, exams, scheduled, chapters] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
       get('/chapters'),
+      get('/daily-tasks?date=' + todayStr),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -61,6 +62,12 @@ export async function render(el) {
       <div class="card">
         <div class="card-title">${t('card.tomorrowSchedule')}</div>
         ${timetableCard(tomorrowSlots, t('empty.tomorrowSchedule'))}
+      </div>
+
+      <!-- Today's homework tasks -->
+      <div class="card" id="daily-tasks-card" style="grid-column: 1 / -1;">
+        <div class="card-title">${t('card.todayHomework')}</div>
+        ${dailyTasksCard(dailyTasks)}
       </div>
 
       <!-- Today's study progress -->
@@ -196,6 +203,54 @@ function studyCard(items, emptyMsg) {
   }).join('');
 }
 
+function dailyTasksCard(tasks) {
+  if (!tasks.length) return `<div class="text-muted text-sm">${t('empty.todayHomework')}</div>`;
+  return tasks.map(task => {
+    const parts = task.parts || [];
+    const multiPart = parts.length > 1;
+    const doneParts = parts.filter(p => p.is_done).length;
+    const allDone = task.is_done || (parts.length > 0 && doneParts === parts.length);
+    const subjectBadge = task.subject_name
+      ? `<span class="badge" style="background:${task.subject_color};margin-right:.3rem;">${escHtml(task.subject_name)}</span>`
+      : '';
+    const titleHtml = `${subjectBadge}${task.title ? escHtml(task.title) : ''}`;
+    const titleStyle = allDone ? 'text-decoration:line-through;color:var(--text3);' : '';
+
+    if (!multiPart) {
+      const p = parts[0];
+      return `
+        <div id="dt-row-${task.id}" style="display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;">
+          <button onclick="dashTogglePart(${p ? p.id : 0}, ${task.id})"
+            style="flex-shrink:0;width:18px;height:18px;border-radius:50%;
+                   border:2px solid var(--accent);background:${allDone ? 'var(--accent)' : 'transparent'};
+                   display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;
+                   cursor:pointer;padding:0;">${allDone ? '✓' : ''}</button>
+          <span style="flex:1;font-size:.9rem;${titleStyle}">${titleHtml}</span>
+        </div>`;
+    }
+
+    const progressColor = allDone ? 'var(--success)' : doneParts > 0 ? 'var(--accent)' : 'var(--text3)';
+    const partsHtml = parts.map(p => `
+      <div id="dt-part-${p.id}" style="display:flex;align-items:center;gap:.5rem;padding:.15rem 0 .15rem 1.6rem;">
+        <button onclick="dashTogglePart(${p.id}, ${task.id})"
+          style="flex-shrink:0;width:15px;height:15px;border-radius:50%;
+                 border:2px solid var(--accent);background:${p.is_done ? 'var(--accent)' : 'transparent'};
+                 display:flex;align-items:center;justify-content:center;font-size:.5rem;color:#fff;
+                 cursor:pointer;padding:0;">${p.is_done ? '✓' : ''}</button>
+        <span style="font-size:.82rem;${p.is_done ? 'text-decoration:line-through;color:var(--text3);' : ''}">${t('hw.partLabel', { n: p.part_num })}</span>
+      </div>`).join('');
+
+    return `
+      <div id="dt-row-${task.id}" style="margin-bottom:.65rem;">
+        <div style="display:flex;align-items:center;gap:.6rem;">
+          <span style="flex-shrink:0;font-size:.75rem;font-weight:700;min-width:28px;text-align:center;color:${progressColor};">${doneParts}/${parts.length}</span>
+          <span style="flex:1;font-size:.9rem;${titleStyle}">${titleHtml}</span>
+        </div>
+        ${partsHtml}
+      </div>`;
+  }).join('');
+}
+
 // ── Global handler (called from inline onclick in studyCard / overdueCard) ──
 
 function openDashTimeModal(onSave, onSkip) {
@@ -228,6 +283,55 @@ function openDashTimeModal(onSave, onSkip) {
   modal.onclick = e => { if (e.target === modal) { modal.classList.add('hidden'); onSkip(); } };
   setTimeout(() => modal.querySelector('#dtm-minutes').focus(), 50);
 }
+
+window.dashTogglePart = async function(partId, taskId) {
+  const partEl = document.getElementById('dt-part-' + partId);
+  const taskRow = document.getElementById('dt-row-' + taskId);
+  if (!taskRow) return;
+
+  const btn = (partEl || taskRow).querySelector('button');
+  const isDone = btn.style.background !== 'transparent' && btn.style.background !== '';
+  const newDone = !isDone;
+
+  try {
+    await patch('/daily-tasks/parts/' + partId, { is_done: newDone });
+
+    if (partEl) {
+      // multi-part: update the part button
+      const b = partEl.querySelector('button');
+      const s = partEl.querySelector('span');
+      b.style.background = newDone ? 'var(--accent)' : 'transparent';
+      b.textContent = newDone ? '✓' : '';
+      s.style.textDecoration = newDone ? 'line-through' : '';
+      s.style.color = newDone ? 'var(--text3)' : '';
+
+      // update progress counter
+      const allBtns = taskRow.querySelectorAll('[id^="dt-part-"] button');
+      const done = [...allBtns].filter(b => b.style.background !== 'transparent' && b.style.background !== '').length;
+      const total = allBtns.length;
+      const counter = taskRow.querySelector('div > span:first-child');
+      if (counter) {
+        counter.textContent = `${done}/${total}`;
+        counter.style.color = done === total ? 'var(--success)' : done > 0 ? 'var(--accent)' : 'var(--text3)';
+      }
+      const titleSpan = taskRow.querySelector('div > span:nth-child(2)');
+      if (titleSpan) {
+        titleSpan.style.textDecoration = done === total ? 'line-through' : '';
+        titleSpan.style.color = done === total ? 'var(--text3)' : '';
+      }
+    } else {
+      // single-part: update checkbox
+      const b = taskRow.querySelector('button');
+      const s = taskRow.querySelector('span');
+      b.style.background = newDone ? 'var(--accent)' : 'transparent';
+      b.textContent = newDone ? '✓' : '';
+      s.style.textDecoration = newDone ? 'line-through' : '';
+      s.style.color = newDone ? 'var(--text3)' : '';
+    }
+  } catch (e) {
+    alert(t('alert.saveFailed', { msg: e.message }));
+  }
+};
 
 window.dashToggleProgress = async function(progressId, removeOnDone) {
   const row = document.querySelector(`[data-prog-id="${progressId}"]`);
