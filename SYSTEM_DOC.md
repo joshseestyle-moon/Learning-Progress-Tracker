@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：3.0　　最後更新：2026-05-30
+> 版本：3.1　　最後更新：2026-06-01
 
 ---
 
@@ -90,20 +90,21 @@ X:\class\
 │   └── userContext.js          # 解析 X-User-Id header，注入 req.userId
 │
 ├── badges/
-│   ├── definitions.js          # 16 枚徽章定義（id、icon、名稱、描述、稀有度）
+│   ├── definitions.js          # 20 枚系統徽章定義（id、icon、名稱、描述、稀有度），含 4 枚作業類
 │   └── checker.js              # checkBadges(userId)：檢查並頒發新徽章
 │
 ├── routes/
 │   ├── users.js                # 使用者 CRUD
 │   ├── subjects.js             # 科目 CRUD
 │   ├── timetable.js            # 課表 CRUD
-│   ├── assignments.js          # 作業 CRUD
+│   ├── assignments.js          # 作業 CRUD（結構化，需 subject_id）
 │   ├── exams.js                # 考試 CRUD
 │   ├── chapters.js             # 章節 CRUD + 進度管理
 │   ├── studylog.js             # 讀書時間記錄
 │   ├── grades.js               # 成績紀錄
 │   ├── badges.js               # 系統徽章 + 自訂成就
-│   └── shop.js                 # 獎勵商店（許願池、兌換、紀錄）
+│   ├── shop.js                 # 獎勵商店（許願池、兌換、紀錄）
+│   └── daily-tasks.js          # 作業清單 CRUD（自由格式，含 subject、多部份、badge 觸發）
 │
 └── public/
     ├── index.html              # 個人檔案選擇頁
@@ -121,6 +122,7 @@ X:\class\
     │   ├── timetable.js        # 每週課表頁
     │   ├── calendar.js         # 行事曆頁
     │   ├── exams.js            # 考試倒數頁
+    │   ├── homework.js         # 作業清單頁（科目分類、多部份完成、badge 連動）
     │   ├── chapters.js         # 讀書進度頁
     │   ├── studylog.js         # 讀書時間頁
     │   ├── grades.js           # 成績紀錄頁
@@ -217,6 +219,7 @@ users ──┬── timetable_slots
         ├── reward_items
         ├── redemption_log
         ├── custom_badges ──── custom_badge_earned
+        ├── daily_tasks ──── daily_task_parts
         └── (透過 subjects 繼承) chapters ──── chapter_progress
 
 subjects ──┬── timetable_slots
@@ -426,6 +429,31 @@ subjects ──┬── timetable_slots
 
 - 唯一約束：`(user_id, custom_badge_id)` — 同一成就完成後需先兌換才能再次達成
 - v2.8：完成成就不再自動入帳，需按「換 N 點」兌換後才入帳，同時清除此記錄
+
+#### `daily_tasks` — 作業清單（每人每日，Migration 16 + 17）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 所屬使用者（ON DELETE CASCADE） |
+| `task_date` | TEXT | 作業日期（YYYY-MM-DD） |
+| `title` | TEXT | 作業名稱（可空白，但 title 和 subject_id 不可同時為空） |
+| `subject_id` | INTEGER FK | 關聯科目（可為 NULL，ON DELETE SET NULL）（Migration 17） |
+| `is_done` | INTEGER | 0/1，衍生自所有 parts 的完成狀態，由後端同步維持 |
+| `created_at` | TEXT | 建立時間 |
+
+#### `daily_task_parts` — 作業子項目（Migration 17）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `task_id` | INTEGER FK | 所屬作業（ON DELETE CASCADE） |
+| `part_num` | INTEGER | 部份序號（1、2、3…，最多 10） |
+| `is_done` | INTEGER | 0/1，個別部份完成狀態 |
+
+- 唯一約束：`(task_id, part_num)`
+- 每筆作業至少有 1 個 part（預設）；新增時若 total_parts > 1，自動建立對應筆數的 part 記錄
+- 伺服器啟動時 backfill：已存在但無 parts 的舊作業自動補建 part_num=1
 
 #### `badge_exchange_log` — 徽章兌換歷史（Migration 14）
 
@@ -672,6 +700,8 @@ subjects ──┬── timetable_slots
 - `PUT /api/assignments/:id` — 作業標記完成後檢查
 - `PATCH /api/chapters/:id/progress`、`PATCH /api/chapters/progress/:id` — 章節進度完成後檢查
 - `POST /api/grades` — 新增成績後檢查
+- `PATCH /api/daily-tasks/parts/:partId` — 部份完成且整筆作業全完成時檢查（v3.1）
+- `PATCH /api/daily-tasks/:id` — 整筆作業標記完成時檢查（v3.1）
 
 前端 `api.js` 自動偵測回應中的 `newBadges` 欄位，觸發 `badge-earned` CustomEvent，`app.html` 監聽後顯示右下角 toast 通知。
 
@@ -700,6 +730,54 @@ subjects ──┬── timetable_slots
 { "ok": true, "points": 150 }
 ```
 > 點數不足時回傳 400 `{ "error": "點數不足" }`
+
+---
+
+### 作業清單 `/api/daily-tasks`（需 X-User-Id）
+
+| 方法 | 路徑 | 查詢參數 | 說明 |
+|---|---|---|---|
+| GET | `/api/daily-tasks` | `date=YYYY-MM-DD` 或 `from=&to=` | 取得指定日期或日期範圍的作業（含 parts、科目名稱色彩） |
+| POST | `/api/daily-tasks` | — | 新增作業 |
+| PATCH | `/api/daily-tasks/parts/:partId` | — | 切換個別部份完成狀態；若全部完成則觸發 checkBadges |
+| PATCH | `/api/daily-tasks/:id` | — | 切換整筆作業完成狀態（所有 parts 同步）；觸發 checkBadges |
+| DELETE | `/api/daily-tasks/:id` | — | 刪除作業（parts 連帶刪除） |
+
+**POST `/api/daily-tasks` 請求體**
+```json
+{
+  "title": "數學習作第三章",
+  "task_date": "2026-06-01",
+  "subject_id": 13,
+  "total_parts": 3
+}
+```
+> `title` 與 `subject_id` 至少填一個（不可同時為空）  
+> `subject_id` 需屬於當前使用者（403 if not）  
+> `total_parts` 1–10，省略預設 1
+
+**GET 回應格式**（陣列，每筆含 parts）：
+```json
+[
+  {
+    "id": 5,
+    "user_id": 1,
+    "task_date": "2026-06-01",
+    "title": "英文單字背誦",
+    "subject_id": 2,
+    "subject_name": "英語",
+    "subject_color": "#22c55e",
+    "is_done": 0,
+    "created_at": "...",
+    "parts": [
+      { "id": 9,  "task_id": 5, "part_num": 1, "is_done": 1 },
+      { "id": 10, "task_id": 5, "part_num": 2, "is_done": 0 }
+    ]
+  }
+]
+```
+
+**PATCH parts 回應**：`{ ok: true, task_done: boolean, newBadges: [...] }`
 
 ---
 
@@ -732,6 +810,7 @@ subjects ──┬── timetable_slots
 | `/app#timetable` | 每週課表 | `timetable.js` |
 | `/app#calendar` | 行事曆 | `calendar.js` |
 | `/app#exams` | 考試倒數 | `exams.js` |
+| `/app#homework` | 作業清單 | `homework.js` |
 | `/app#chapters` | 讀書進度 | `chapters.js` |
 | `/app#studylog` | 讀書時間 | `studylog.js` |
 | `/app#grades` | 成績紀錄 | `grades.js` |
@@ -780,9 +859,18 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 「🌙 切換主題」：切換亮色／暗色模式
 - 選擇後將 `userId`、`userName`、**`lang`**（來自使用者 DB 記錄）寫入 `localStorage`，跳轉至 App；語系跟著帳號走，切換帳號時自動還原各自語系
 
+#### 作業清單（#homework）
+- 位置：側邊欄考試倒數與讀書進度之間
+- **新增作業**：可選科目（課程資訊的科目列表）、輸入名稱（可空白，但科目和名稱不可同時空）、選日期、設定分成幾部份完成（1–10，預設 1）
+- **今日作業**：今天的作業清單，單一部份顯示圓形勾選框，多部份顯示「已完成/總數」進度與各部份子勾選框
+- **未完成（逾期）**：過去日期未完成的作業，以紅色左邊框標示，按日期分組
+- **即將到來**：未來日期的作業，按日期分組
+- 完成最後一個部份（或整筆作業）→ 觸發 checkBadges，若達成條件解鎖作業類徽章
+
 #### 今日概覽（#dashboard）
 - **今日課表**：顯示當天節次與科目
 - **明日課表**：顯示明天節次與科目
+- **今日作業**：來自作業清單的當日作業，顯示科目標籤；單一部份可直接勾選完成；多部份顯示「N/M」進度與各部份子勾選（勾選觸發 badge 檢查）；不提供新增功能（須至作業清單頁操作）
 - **今日讀書進度**：排定日期為今天的預習/複習項目，顯示完成狀態與備註
 - **明日讀書進度**：排定日期為明天的預習/複習項目
 - **待完成讀書進度**：所有 `scheduled_date < 今天` 且 `is_done = 0` 的進度，按日期由舊到新排列；顯示科目、章節、類型、應完成日期及已逾天數（橘色提示）；無逾期時顯示「✓ 目前沒有待完成項目」；點擊 `!` 圓圈按鈕標記完成（同時彈出時間填寫視窗，可略過），項目完成後淡出移除
@@ -847,6 +935,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **兌換紀錄**：頁面底部顯示所有兌換歷史（圖示、名稱、點數、時間）
 - 稀有度四級：普通（common）、進階（uncommon）、稀有（rare）、傳說（epic）；自訂成就另有 custom（綠色）
 - 新徽章解鎖時，右下角彈出 toast 通知（動畫入場，3.5 秒後自動消失），多枚徽章依序顯示（每 0.7 秒一枚）
+- **v3.1 新增 4 枚作業類徽章**：盡責開始（首次完成當天全部作業）、作業達人（連續 3 天）、作業之星（連續 7 天）、毅力勇者（累積 10 天）
 
 #### 獎勵商店（#shop）
 - 三個分頁 tab 切換：
@@ -979,4 +1068,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-05-30 的實作狀態（v3.0）。*
+*本文件反映截至 2026-06-01 的實作狀態（v3.1）。*

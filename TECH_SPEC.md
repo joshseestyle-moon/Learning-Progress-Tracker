@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：2.5　　最後更新：2026-05-30  
+> 版本：3.1　　最後更新：2026-06-01  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -436,7 +436,7 @@ const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?
 if (!subject) return res.status(403).json({ error: '科目不存在' });
 ```
 
-套用此驗證的路由：`POST /assignments`、`POST /exams`、`POST /grades`、`POST /studylog`、`POST /timetable`
+套用此驗證的路由：`POST /assignments`、`POST /exams`、`POST /grades`、`POST /studylog`、`POST /timetable`、`POST /daily-tasks`（v3.1）
 
 ### GET /chapters 跨使用者資料隔離修正
 
@@ -699,7 +699,7 @@ CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 12 個遷移
+### 已實作的 17 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -1555,4 +1555,66 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 
 ---
 
-*本文件反映截至 2026-05-30 的實作狀態（v2.5）。*
+#### Migration 15：使用者語系欄位（`users.lang`）
+
+**觸發條件**：`users` 缺少 `lang` 欄位
+
+**處理方式**：`ALTER TABLE ADD COLUMN`
+
+```js
+db.exec("ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'zh-TW'");
+```
+
+> 每人語系偏好存於 DB，切換帳號時自動還原各自語系。
+
+#### Migration 16：作業清單資料表（`daily_tasks`）
+
+**觸發條件**：每次啟動皆執行（`CREATE TABLE IF NOT EXISTS`，冪等）
+
+```js
+db.exec(`
+  CREATE TABLE IF NOT EXISTS daily_tasks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    task_date  TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    is_done    INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_daily_tasks_user_date ON daily_tasks(user_id, task_date);
+`);
+```
+
+#### Migration 17：作業子項目（`subject_id` + `daily_task_parts`）
+
+**觸發條件**：`daily_tasks` 缺少 `subject_id` 欄位（`ALTER TABLE`）；`daily_task_parts` 以 `CREATE TABLE IF NOT EXISTS` 冪等建立
+
+```js
+// 新增 subject_id 欄位
+if (!dtCols.includes('subject_id')) {
+  db.exec('ALTER TABLE daily_tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL');
+}
+
+// 建立 parts 表
+db.exec(`
+  CREATE TABLE IF NOT EXISTS daily_task_parts (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id  INTEGER NOT NULL REFERENCES daily_tasks(id) ON DELETE CASCADE,
+    part_num INTEGER NOT NULL,
+    is_done  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(task_id, part_num)
+  );
+`);
+
+// Backfill：為已存在但無 parts 的任務補建 part_num=1
+const orphanTasks = db.prepare(`SELECT id, is_done FROM daily_tasks
+  WHERE NOT EXISTS (SELECT 1 FROM daily_task_parts p WHERE p.task_id = daily_tasks.id)
+`).all();
+for (const t of orphanTasks) bfPart.run(t.id, t.is_done);
+```
+
+> `daily_tasks.is_done` 為衍生欄位（等於「所有 parts is_done=1」），由路由 handler 在更新 parts 時同步維持，不由 DB 計算。
+
+---
+
+*本文件反映截至 2026-06-01 的實作狀態（v3.1）。*
