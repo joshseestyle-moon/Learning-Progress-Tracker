@@ -1,4 +1,4 @@
-import { api, escHtml } from './api.js';
+import { api, escHtml, fmtDate, LOCALE_MAP } from './api.js';
 import { t, getLang } from './i18n.js';
 
 const TABS = ['wishing', 'counter', 'history'];
@@ -141,35 +141,78 @@ function renderCounter() {
 
 function renderHistory() {
   const hist = state.history;
-  const LOCALE_MAP = { 'zh-TW': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP' };
-  const locale = LOCALE_MAP[getLang()] || 'zh-TW';
+  const lang  = getLang();
+  const locale = LOCALE_MAP[lang] || 'zh-TW';
+
+  function fmtMonth(ym) {
+    const year = parseInt(ym.slice(0, 4));
+    const mon  = ym.slice(5, 7);
+    if (lang === 'zh-TW') return `民國${year - 1911}年${mon}月`;
+    return new Date(ym + '-01T00:00:00').toLocaleDateString(locale, { year: 'numeric', month: 'long' });
+  }
+
+  const now   = new Date();
+  const nowYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const currentItems = [];
+  const pastGroups   = new Map(); // "YYYY-MM" → { netDelta, count, endBalance }
+
+  for (const r of hist) {
+    const ym = r.created_at.slice(0, 7);
+    if (ym === nowYM) {
+      currentItems.push(r);
+    } else {
+      if (!pastGroups.has(ym)) pastGroups.set(ym, { netDelta: 0, count: 0, endBalance: r.balance });
+      const g = pastGroups.get(ym);
+      g.netDelta += r.delta;
+      g.count++;
+    }
+  }
+
+  const rows = [];
+
+  for (const r of currentItems) {
+    const d = new Date(r.created_at);
+    const dateStr = fmtDate(r.created_at.slice(0, 10));
+    const timeStr = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    const isPos = r.delta >= 0;
+    rows.push(`
+      <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;border-bottom:1px solid var(--border)">
+        <span style="font-size:1.2rem;flex-shrink:0">${r.display_icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.88rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.display_name)}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">${dateStr} ${timeStr}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.1rem;flex-shrink:0">
+          <div style="font-size:.82rem;font-weight:700;color:${isPos ? 'var(--success)' : 'var(--danger)'}">${isPos ? '+' : ''}${r.delta} ${t('shop.pointUnit')}</div>
+          <div style="font-size:.72rem;color:var(--text3)">= ${r.balance} ${t('shop.pointUnit')}</div>
+        </div>
+      </div>`);
+  }
+
+  for (const [ym, g] of pastGroups) {
+    const isPos = g.netDelta >= 0;
+    rows.push(`
+      <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;border-bottom:1px solid var(--border);background:var(--bg3)">
+        <span style="font-size:1.2rem;flex-shrink:0">🗓️</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.88rem;font-weight:500;color:var(--text)">${fmtMonth(ym)}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">${t('shop.monthSummary', { count: g.count })}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.1rem;flex-shrink:0">
+          <div style="font-size:.82rem;font-weight:700;color:${isPos ? 'var(--success)' : 'var(--danger)'}">${isPos ? '+' : ''}${g.netDelta} ${t('shop.pointUnit')}</div>
+          <div style="font-size:.72rem;color:var(--text3)">= ${g.endBalance} ${t('shop.pointUnit')}</div>
+        </div>
+      </div>`);
+  }
+
   return `
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem">
       <div style="font-size:.8rem;color:var(--text3);font-weight:500;letter-spacing:.03em;margin-bottom:.75rem">${t('shop.historyTitle')}</div>
-      ${hist.length === 0
-        ? `<div style="text-align:center;padding:1.5rem 0;color:var(--text3);font-size:.88rem">
-             ${t('shop.noHistory')}
-           </div>`
+      ${rows.length === 0
+        ? `<div style="text-align:center;padding:1.5rem 0;color:var(--text3);font-size:.88rem">${t('shop.noHistory')}</div>`
         : `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
-             ${hist.map(r => {
-               const d = new Date(r.created_at);
-               const dateStr = d.toLocaleDateString(locale, { year:'numeric', month:'2-digit', day:'2-digit' });
-               const timeStr = d.toLocaleTimeString(locale, { hour:'2-digit', minute:'2-digit' });
-               const isPos = r.delta >= 0;
-               return `
-                 <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;border-bottom:1px solid var(--border)">
-                   <span style="font-size:1.2rem;flex-shrink:0">${r.display_icon}</span>
-                   <div style="flex:1;min-width:0">
-                     <div style="font-size:.88rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.display_name)}</div>
-                     <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">${dateStr} ${timeStr}</div>
-                   </div>
-                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.1rem;flex-shrink:0">
-                     <div style="font-size:.82rem;font-weight:700;color:${isPos ? 'var(--success)' : 'var(--danger)'}">${isPos ? '+' : ''}${r.delta} ${t('shop.pointUnit')}</div>
-                     <div style="font-size:.72rem;color:var(--text3)">= ${r.balance} ${t('shop.pointUnit')}</div>
-                   </div>
-                 </div>
-               `;
-             }).join('')}
+             ${rows.join('')}
            </div>`
       }
     </div>

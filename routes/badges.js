@@ -51,23 +51,6 @@ router.get('/', userCtx, (req, res) => {
   res.json([...system, ...custom]);
 });
 
-// ── Exchange history ───────────────────────────────────────────
-router.get('/exchanges', userCtx, (req, res) => {
-  const rows = db.prepare(`
-    SELECT id, badge_id, badge_name, badge_icon, points, exchanged_at, 0 AS is_adjustment
-      FROM badge_exchange_log WHERE user_id = ?
-    UNION ALL
-    SELECT id, NULL AS badge_id, reason AS badge_name, '📝' AS badge_icon,
-           delta AS points, created_at AS exchanged_at, 1 AS is_adjustment
-      FROM point_log
-     WHERE user_id = ?
-       AND reason NOT LIKE 'exchange:%'
-       AND reason NOT LIKE 'redeem:%'
-    ORDER BY exchanged_at DESC
-  `).all(req.userId, req.userId);
-  res.json(rows);
-});
-
 // ── Custom badge CRUD ──────────────────────────────────────────
 router.post('/custom', userCtx, (req, res) => {
   const name     = (req.body.name || '').trim();
@@ -124,12 +107,13 @@ router.post('/custom/:id/exchange', userCtx, (req, res) => {
   ).get(req.userId, req.params.id);
   if (!earned) return res.status(400).json({ error: '尚未達成此成就' });
 
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
   const exchangeTx = db.transaction(() => {
     db.prepare('DELETE FROM custom_badge_earned WHERE user_id = ? AND custom_badge_id = ?').run(req.userId, req.params.id);
     if (row.points > 0) {
-      db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, row.points, 'exchange:custom_' + row.id);
+      db.prepare('INSERT INTO point_log (user_id, delta, reason, created_at) VALUES (?, ?, ?, ?)').run(req.userId, row.points, 'exchange:custom_' + row.id, now);
     }
-    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points) VALUES (?, ?, ?, ?, ?)').run(req.userId, 'custom_' + row.id, row.name, row.icon, row.points);
+    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points, exchanged_at) VALUES (?, ?, ?, ?, ?, ?)').run(req.userId, 'custom_' + row.id, row.name, row.icon, row.points, now);
     return getBalance(req.userId);
   });
 
@@ -148,10 +132,11 @@ router.post('/:badgeId/exchange', userCtx, (req, res) => {
 
   const points = RARITY_PTS[def.rarity] || 10;
 
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
   const exchangeTx = db.transaction(() => {
     db.prepare('DELETE FROM user_badges WHERE user_id = ? AND badge_id = ?').run(req.userId, req.params.badgeId);
-    db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)').run(req.userId, points, 'exchange:' + def.id);
-    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points) VALUES (?, ?, ?, ?, ?)').run(req.userId, def.id, def.name, def.icon, points);
+    db.prepare('INSERT INTO point_log (user_id, delta, reason, created_at) VALUES (?, ?, ?, ?)').run(req.userId, points, 'exchange:' + def.id, now);
+    db.prepare('INSERT INTO badge_exchange_log (user_id, badge_id, badge_name, badge_icon, points, exchanged_at) VALUES (?, ?, ?, ?, ?, ?)').run(req.userId, def.id, def.name, def.icon, points, now);
     return getBalance(req.userId);
   });
 
