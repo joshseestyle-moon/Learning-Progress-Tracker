@@ -26,13 +26,14 @@ function checkBadges(userId) {
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
+  // Fetch all badges already exchanged today in one query instead of one-per-badge
+  const exchangedTodaySet = new Set(
+    db.prepare("SELECT badge_id FROM badge_exchange_log WHERE user_id = ? AND date(exchanged_at,'localtime') = ?")
+      .all(userId, today).map(r => r.badge_id)
+  );
+
   function award(badgeId) {
-    if (earned.has(badgeId)) return;
-    // Once exchanged today, cannot re-earn until tomorrow (local calendar day)
-    const exchangedToday = db.prepare(
-      "SELECT id FROM badge_exchange_log WHERE user_id = ? AND badge_id = ? AND date(exchanged_at, 'localtime') = ?"
-    ).get(userId, badgeId, today);
-    if (exchangedToday) return;
+    if (earned.has(badgeId) || exchangedTodaySet.has(badgeId)) return;
     db.prepare('INSERT OR IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)').run(userId, badgeId);
     earned.add(badgeId);
     const def = BADGES.find(b => b.id === badgeId);
@@ -69,13 +70,17 @@ function checkBadges(userId) {
 
   // subject_complete: a subject where every chapter has preview is_done=1
   const subjectComplete = db.prepare(`
+    WITH chapter_counts AS (
+      SELECT ch.subject_id,
+             COUNT(*) AS total,
+             COUNT(CASE WHEN cp.is_done=1 AND cp.type='preview' AND cp.user_id=? THEN 1 END) AS done
+      FROM chapters ch
+      LEFT JOIN chapter_progress cp ON cp.chapter_id = ch.id
+      GROUP BY ch.subject_id
+    )
     SELECT COUNT(*) AS c FROM subjects s
-    WHERE s.user_id = ?
-      AND (SELECT COUNT(*) FROM chapters ch WHERE ch.subject_id = s.id) > 0
-      AND (SELECT COUNT(*) FROM chapters ch WHERE ch.subject_id = s.id)
-        = (SELECT COUNT(*) FROM chapter_progress cp
-           JOIN chapters ch ON ch.id = cp.chapter_id
-           WHERE ch.subject_id = s.id AND cp.user_id = ? AND cp.type = 'preview' AND cp.is_done = 1)
+    JOIN chapter_counts cc ON cc.subject_id = s.id
+    WHERE s.user_id = ? AND cc.total > 0 AND cc.total = cc.done
   `).get(userId, userId).c;
   if (subjectComplete >= 1) award('subject_complete');
 

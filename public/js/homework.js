@@ -22,9 +22,14 @@ function offsetDate(days) {
 
 function buildPage(tasks) {
   const todayStr = today();
-  const todayTasks    = tasks.filter(t => t.task_date === todayStr);
-  const upcomingTasks = tasks.filter(t => t.task_date > todayStr).sort((a, b) => a.task_date.localeCompare(b.task_date));
-  const pastTasks     = tasks.filter(t => t.task_date < todayStr && !t.is_done).sort((a, b) => b.task_date.localeCompare(a.task_date));
+  const todayTasks = [], upcomingTasks = [], pastTasks = [];
+  for (const task of tasks) {
+    if      (task.task_date === todayStr)                   todayTasks.push(task);
+    else if (task.task_date > todayStr)                    upcomingTasks.push(task);
+    else if (task.task_date < todayStr && !task.is_done)   pastTasks.push(task);
+  }
+  upcomingTasks.sort((a, b) => a.task_date.localeCompare(b.task_date));
+  pastTasks.sort((a, b) => b.task_date.localeCompare(a.task_date));
 
   return `
     ${addForm(todayStr)}

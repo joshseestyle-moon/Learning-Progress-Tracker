@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：3.2　　最後更新：2026-06-03
+> 版本：3.4　　最後更新：2026-06-04
 
 ---
 
@@ -93,6 +93,12 @@ X:\class\
 │   ├── definitions.js          # 20 枚系統徽章定義（id、icon、名稱、描述、稀有度），含 4 枚作業類
 │   └── checker.js              # checkBadges(userId)：檢查並頒發新徽章
 │
+├── utils/
+│   └── points.js               # getBalance(userId)：計算使用者點數餘額（共用工具）
+│
+├── scripts/
+│   └── copy-user-data.js       # 複製使用者所有資料至另一帳號（指令列工具）
+│
 ├── routes/
 │   ├── users.js                # 使用者 CRUD
 │   ├── subjects.js             # 科目 CRUD
@@ -116,7 +122,7 @@ X:\class\
     │   └── print.css           # 列印週計畫 A4 版面
     ├── js/
     │   ├── i18n.js             # 多語系模組：t()、setLang()、getLang()；三語內嵌，無 async
-    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id；自動派送 badge-earned 事件；fmtDate locale-aware
+    │   ├── api.js              # fetch 封裝，自動帶 X-User-Id；自動派送 badge-earned 事件；fmtDate / fmtMonth locale-aware
     │   ├── router.js           # Hash Router（#dashboard、#exams…）；監聽 langchange 事件重新 render
     │   ├── dashboard.js        # 今日概覽頁
     │   ├── timetable.js        # 每週課表頁

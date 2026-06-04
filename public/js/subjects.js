@@ -30,48 +30,35 @@ function buildPage(subjects, chapters) {
   }
 
   return `
-    <div style="display:grid;grid-template-columns:320px 1fr;gap:1.5rem;align-items:start;">
-
-      <!-- 左欄：科目列表 -->
-      <div>
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <div class="card-title" style="margin:0;">${t('sub.subjectList')}</div>
-            <button class="btn btn-primary btn-sm" id="sub-add-btn">${t('sub.add')}</button>
-          </div>
-
-          ${subjects.length ? subjects.map(s => `
-            <div class="subject-row" data-id="${s.id}" style="
-              display:flex;align-items:center;justify-content:space-between;
-              padding:.6rem .75rem;border-radius:var(--radius-sm);cursor:pointer;
-              margin-bottom:.3rem;border:2px solid transparent;
-              background:var(--bg3);transition:.1s;
-            ">
-              <div style="display:flex;align-items:center;gap:.6rem;">
-                <span style="width:14px;height:14px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0;"></span>
-                <span style="font-weight:600;">${escHtml(s.name)}</span>
-                <span class="text-xs text-muted">${t('sub.chapterCount', { n: (bySubject[s.id]||[]).length })}</span>
-              </div>
-              <div style="display:flex;gap:.4rem;">
-                <button class="btn btn-ghost btn-sm sub-edit-btn" data-id="${s.id}">${t('btn.edit')}</button>
-                <button class="btn btn-danger btn-sm sub-del-btn" data-id="${s.id}">✕</button>
-              </div>
-            </div>`).join('') :
-            `<div class="empty-state" style="padding:1.5rem;"><div class="icon">📚</div><p>${t('sub.noSubjects')}</p></div>`}
-        </div>
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div class="card-title" style="margin:0;">${t('sub.subjectList')}</div>
+        <button class="btn btn-primary btn-sm" id="sub-add-btn">${t('sub.add')}</button>
       </div>
 
-      <!-- 右欄：章節管理（點選科目後顯示） -->
-      <div id="chapter-panel">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">👈</div>
-            <p>${t('sub.clickToManage')}</p>
-          </div>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.5rem;">
+        ${subjects.length ? subjects.map(s => `
+          <div class="subject-row" data-id="${s.id}" style="
+            display:flex;align-items:center;justify-content:space-between;
+            padding:.6rem .75rem;border-radius:var(--radius-sm);cursor:pointer;
+            border:2px solid transparent;background:var(--bg3);transition:.1s;
+          ">
+            <div style="display:flex;align-items:center;gap:.6rem;min-width:0;">
+              <span style="width:14px;height:14px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0;"></span>
+              <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</span>
+              <span class="text-xs text-muted" style="flex-shrink:0;">${t('sub.chapterCount', { n: (bySubject[s.id]||[]).length })}</span>
+            </div>
+            <div style="display:flex;gap:.4rem;flex-shrink:0;margin-left:.5rem;">
+              <button class="btn btn-ghost btn-sm sub-edit-btn" data-id="${s.id}">${t('btn.edit')}</button>
+              <button class="btn btn-danger btn-sm sub-del-btn" data-id="${s.id}">✕</button>
+            </div>
+          </div>`).join('') :
+          `<div class="empty-state" style="padding:1.5rem;grid-column:1/-1;"><div class="icon">📚</div><p>${t('sub.noSubjects')}</p></div>`}
       </div>
-
     </div>
+
+    <!-- 章節管理面板（點選科目後顯示） -->
+    <div id="chapter-panel"></div>
 
     <!-- 科目 modal -->
     <div id="sub-modal" class="modal-overlay hidden">${buildSubjectModal()}</div>

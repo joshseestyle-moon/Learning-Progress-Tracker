@@ -134,12 +134,12 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
 
   window.toggleAssignment = async (id, isDone) => {
     const a = assignments.find(x => x.id === id);
-    await import('./api.js').then(m => m.put('/assignments/' + id, { ...a, is_done: !isDone }));
+    await put('/assignments/' + id, { ...a, is_done: !isDone });
     await renderMonth(el);
   };
   window.deleteAssignment = async (id) => {
     if (!confirm(t('confirm.deleteAssignment'))) return;
-    await import('./api.js').then(m => m.del('/assignments/' + id));
+    await del('/assignments/' + id);
     await renderMonth(el);
   };
 }

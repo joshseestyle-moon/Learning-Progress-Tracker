@@ -1,4 +1,4 @@
-import { api, escHtml, fmtDate, LOCALE_MAP } from './api.js';
+import { api, escHtml, fmtDate, fmtMonth, LOCALE_MAP } from './api.js';
 import { t, getLang } from './i18n.js';
 
 const TABS = ['wishing', 'counter', 'history'];
@@ -143,13 +143,6 @@ function renderHistory() {
   const hist = state.history;
   const lang  = getLang();
   const locale = LOCALE_MAP[lang] || 'zh-TW';
-
-  function fmtMonth(ym) {
-    const year = parseInt(ym.slice(0, 4));
-    const mon  = ym.slice(5, 7);
-    if (lang === 'zh-TW') return `民國${year - 1911}年${mon}月`;
-    return new Date(ym + '-01T00:00:00').toLocaleDateString(locale, { year: 'numeric', month: 'long' });
-  }
 
   const now   = new Date();
   const nowYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

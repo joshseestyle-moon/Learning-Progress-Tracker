@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：3.2　　最後更新：2026-06-03  
+> 版本：3.4　　最後更新：2026-06-04  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -108,6 +108,9 @@ server.js
 badges/
   definitions.js                 ← 靜態徽章定義陣列（無 DB 依賴）
   checker.js                     ← checkBadges(userId)，同步執行，回傳新獲得徽章
+
+utils/
+  points.js                      ← getBalance(userId)，routes/badges 與 routes/shop 共用
 ```
 
 所有 routes 透過 `app.use('/api/<resource>', router)` 掛載，彼此隔離。
@@ -205,12 +208,16 @@ api.js  （每次 API 呼叫）
         │
         ▼
 middleware/userContext.js  （套用於需要使用者身份的路由）
-  const userId = req.headers['x-user-id']
+  const userId = parseInt(req.headers['x-user-id'])
   若無 userId → 401
-  db.prepare('SELECT id FROM users WHERE id = ?').get(userId)
+  若 validUserIds.has(userId) → 直接通過（記憶體快取，避免重複 DB 查詢）
+  否則 db.prepare('SELECT id FROM users WHERE id = ?').get(userId)
   若不存在 → 401
-  req.userId = user.id   ← 後續 route handler 從此讀取
+  validUserIds.add(user.id)   ← 加入快取
+  req.userId = user.id        ← 後續 route handler 從此讀取
 ```
+
+`validUserIds` 為模組層級的 `Set<number>`，啟動後首次驗證各使用者時快取，後續請求無需再查 DB。
 
 ### 哪些路由需要身份
 
@@ -664,6 +671,22 @@ CREATE INDEX idx_grades_user_subject   ON grades(user_id, subject_id);
 CREATE INDEX idx_chapter_progress_user ON chapter_progress(user_id);
 CREATE INDEX idx_timetable_user        ON timetable_slots(user_id);
 ```
+
+`badge_exchange_log` 新增複合索引（v3.4，Migration 18）：
+
+```sql
+CREATE INDEX idx_badge_exchange_log_user_badge ON badge_exchange_log(user_id, badge_id);
+```
+
+此索引加速 `badges/checker.js` 批次查詢「今日已兌換徽章集合」，避免 N 次單筆查詢。
+
+### 徽章檢查效能優化（v3.4）
+
+`badges/checker.js` 的 `checkBadges()` 有兩項優化：
+
+1. **批次查詢今日已兌換清單**：原為每個待發放徽章各查一次 DB，改為一次性取出當日所有已兌換 `badge_id`，建成 `Set` 後在記憶體中做成員判斷。
+
+2. **`subject_complete` 改用 CTE**：原查詢使用巢狀子查詢（每科目各查一次），改為 `WITH chapter_counts AS (...)` CTE 讓 SQLite 一次計算所有科目的章節總數與完成數，再 JOIN 篩選。
 
 ---
 
@@ -1539,6 +1562,8 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 | `idx_redemption_log_user` | `redemption_log` | `(user_id)` | 查詢使用者兌換紀錄 |
 | `idx_custom_badges_user` | `custom_badges` | `(user_id)` | 查詢使用者自訂成就 |
 | `idx_custom_badge_earned_user` | `custom_badge_earned` | `(user_id)` | 查詢自訂成就完成狀態 |
+| `idx_badge_exchange_log_user` | `badge_exchange_log` | `(user_id)` | — |
+| `idx_badge_exchange_log_user_badge` | `badge_exchange_log` | `(user_id, badge_id)` | 批次查今日已兌換清單（v3.4） |
 
 ---
 
@@ -1617,4 +1642,4 @@ for (const t of orphanTasks) bfPart.run(t.id, t.is_done);
 
 ---
 
-*本文件反映截至 2026-06-01 的實作狀態（v3.1）。*
+*本文件反映截至 2026-06-04 的實作狀態（v3.4）。*

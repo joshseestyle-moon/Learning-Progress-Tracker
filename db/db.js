@@ -264,6 +264,7 @@ function openAndMigrate() {
         exchanged_at TEXT    NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX idx_badge_exchange_log_user ON badge_exchange_log(user_id);
+      CREATE INDEX idx_badge_exchange_log_user_badge ON badge_exchange_log(user_id, badge_id);
     `);
   }
 

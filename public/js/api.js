@@ -58,3 +58,12 @@ export function daysLeft(dateStr) {
   const diff = Math.ceil((new Date(dateStr + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
   return diff;
 }
+
+export function fmtMonth(ym) {
+  const lang   = getLang();
+  const year   = parseInt(ym.slice(0, 4));
+  const mon    = ym.slice(5, 7);
+  if (lang === 'zh-TW') return `民國${year - 1911}年${mon}月`;
+  const locale = LOCALE_MAP[lang] || 'en-US';
+  return new Date(ym + '-01T00:00:00').toLocaleDateString(locale, { year: 'numeric', month: 'long' });
+}

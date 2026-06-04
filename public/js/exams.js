@@ -35,6 +35,7 @@ function buildProgressMap(chapters) {
 }
 
 function buildPage(exams, progressMap) {
+  const tl = TYPE_LABEL();
   const upcoming = exams.filter(e => !e.is_completed && e.days_left >= 0);
   const expired  = exams.filter(e => !e.is_completed && e.days_left < 0);
   const done     = exams.filter(e => e.is_completed);
@@ -47,7 +48,7 @@ function buildPage(exams, progressMap) {
 
     <div class="card" style="margin-bottom:1.25rem;">
       <div class="card-title">${t('exam.upcoming', { n: upcoming.length })}</div>
-      ${upcoming.length ? upcoming.map(e => examCard(e, progressMap[e.subject_id])).join('') :
+      ${upcoming.length ? upcoming.map(e => examCard(e, progressMap[e.subject_id], tl)).join('') :
         `<div class="text-muted text-sm">${t('exam.noUpcoming')}</div>`}
     </div>
 
@@ -57,22 +58,22 @@ function buildPage(exams, progressMap) {
         <div class="card-title" style="color:var(--danger);margin-bottom:0;">${t('exam.expired', { n: expired.length })}</div>
         <button class="btn btn-danger btn-sm" id="exam-clear-expired-btn">${t('exam.clearExpired')}</button>
       </div>
-      ${expired.map(e => examCard(e, progressMap[e.subject_id])).join('')}
+      ${expired.map(e => examCard(e, progressMap[e.subject_id], tl)).join('')}
     </div>` : ''}
 
     ${done.length ? `
     <div class="card">
       <div class="card-title" style="color:var(--text2)">${t('exam.done', { n: done.length })}</div>
-      ${done.map(e => examCard(e, progressMap[e.subject_id])).join('')}
+      ${done.map(e => examCard(e, progressMap[e.subject_id], tl)).join('')}
     </div>` : ''}
 
     <div id="exam-modal" class="modal-overlay hidden">${buildModal()}</div>`;
 }
 
-function examCard(e, prog) {
+function examCard(e, prog, tl) {
+  tl = tl || TYPE_LABEL();
   const d = e.days_left;
   const urgency = d <= 3 ? 'urgent' : d <= 7 ? 'soon' : 'ok';
-  const tl = TYPE_LABEL();
 
   let progressBar = '';
   if (prog && prog.total > 0) {

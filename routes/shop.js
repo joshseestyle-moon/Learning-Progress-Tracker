@@ -2,12 +2,10 @@ const router  = require('express').Router();
 const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
+const { getBalance } = require('../utils/points');
+
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const _badgeMap  = new Map(BADGES.map(b => [b.id, { name: b.name, icon: b.icon }]));
-
-function getBalance(userId) {
-  return db.prepare('SELECT COALESCE(SUM(delta),0) AS total FROM point_log WHERE user_id = ?').get(userId).total;
-}
 
 router.get('/points', userCtx, (req, res) => {
   res.json({ points: getBalance(req.userId) });
