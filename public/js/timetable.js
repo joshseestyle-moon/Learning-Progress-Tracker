@@ -1,5 +1,5 @@
 import { get, post, put, del, escHtml } from './api.js';
-import { t } from './i18n.js';
+import { t, getLang } from './i18n.js';
 
 const PERIODS = Array.from({ length: 10 }, (_, i) => i + 1);
 
@@ -35,10 +35,14 @@ async function reloadSlots(el) {
   attachCells(el);
 }
 
+function displayYear(rocYear) {
+  return getLang() === 'zh-TW' ? rocYear : rocYear + 1912;
+}
+
 function yearOptions() {
   const rows = [];
   for (let y = 114; y <= 120; y++) {
-    rows.push(`<option value="${y}" ${y === currentYear ? 'selected' : ''}>${t('tt.schoolYear', { y })}</option>`);
+    rows.push(`<option value="${y}" ${y === currentYear ? 'selected' : ''}>${t('tt.schoolYear', { y: displayYear(y) })}</option>`);
   }
   return rows.join('');
 }
@@ -115,7 +119,7 @@ function buildModal(slot, day, period) {
   return `
     <div class="modal-box">
       <div class="modal-title">${s.id
-        ? t('tt.editTitle', { y: s.school_year, sem: s.semester })
+        ? t('tt.editTitle', { y: displayYear(s.school_year), sem: s.semester })
         : t('tt.addTitle', { day: days[day], period })}</div>
       ${!subjects.length
         ? `<div class="empty-state" style="padding:1rem;"><p>${t('tt.noSubject')}</p></div>`

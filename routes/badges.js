@@ -53,9 +53,18 @@ router.get('/', userCtx, (req, res) => {
 
 // ── Exchange history ───────────────────────────────────────────
 router.get('/exchanges', userCtx, (req, res) => {
-  const rows = db.prepare(
-    'SELECT * FROM badge_exchange_log WHERE user_id = ? ORDER BY exchanged_at DESC'
-  ).all(req.userId);
+  const rows = db.prepare(`
+    SELECT id, badge_id, badge_name, badge_icon, points, exchanged_at, 0 AS is_adjustment
+      FROM badge_exchange_log WHERE user_id = ?
+    UNION ALL
+    SELECT id, NULL AS badge_id, reason AS badge_name, '📝' AS badge_icon,
+           delta AS points, created_at AS exchanged_at, 1 AS is_adjustment
+      FROM point_log
+     WHERE user_id = ?
+       AND reason NOT LIKE 'exchange:%'
+       AND reason NOT LIKE 'redeem:%'
+    ORDER BY exchanged_at DESC
+  `).all(req.userId, req.userId);
   res.json(rows);
 });
 

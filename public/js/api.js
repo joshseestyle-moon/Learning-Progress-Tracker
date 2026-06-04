@@ -40,7 +40,14 @@ const LOCALE_MAP = { 'zh-TW': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP' };
 export function fmtDate(d) {
   if (!d) return '';
   const dt = new Date(d + 'T00:00:00');
-  return dt.toLocaleDateString(LOCALE_MAP[getLang()] || 'zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const lang = getLang();
+  if (lang === 'zh-TW') {
+    const roc = dt.getFullYear() - 1911;
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `民國${roc}年${m}月${day}日`;
+  }
+  return dt.toLocaleDateString(LOCALE_MAP[lang] || 'en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 export function today() {
