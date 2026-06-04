@@ -6,15 +6,11 @@ const ALL_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
 let _el = null;
 let _badges = [];
-let _exchanges = [];
 let _showForm = false;
 let _formError = '';
 
 async function load() {
-  [_badges, _exchanges] = await Promise.all([
-    get('/badges'),
-    get('/badges/exchanges'),
-  ]);
+  _badges = await get('/badges');
 }
 
 function badgeCard(b) {
@@ -146,71 +142,6 @@ function renderAddForm() {
     </div>`;
 }
 
-function renderExchangeHistory(exchanges) {
-  if (!exchanges.length) return '';
-
-  const LOCALE_MAP = { 'zh-TW': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP' };
-  const locale = LOCALE_MAP[getLang()] || 'zh-TW';
-
-  const now = new Date();
-  const nowYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  // Split current month (individual) vs past months (grouped)
-  const currentItems = [];
-  const pastGroups = new Map(); // "YYYY-MM" → { total, count }
-
-  for (const r of exchanges) {
-    const d = new Date(r.exchanged_at);
-    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (ym === nowYM) {
-      currentItems.push(r);
-    } else {
-      if (!pastGroups.has(ym)) pastGroups.set(ym, { total: 0, count: 0 });
-      const g = pastGroups.get(ym);
-      g.total += r.points;
-      g.count++;
-    }
-  }
-
-  const rows = [];
-
-  // Current month: individual records
-  for (const r of currentItems) {
-    const dateStr = new Date(r.exchanged_at).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' });
-    rows.push(`
-      <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .9rem;border-bottom:1px solid var(--border)">
-        <span style="font-size:1.3rem;flex-shrink:0">${r.badge_icon}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">${escHtml(r.badge_name)}</div>
-          <div style="font-size:.72rem;color:var(--text3)">${dateStr}</div>
-        </div>
-        <div style="font-size:.82rem;font-weight:600;color:${r.points >= 0 ? 'var(--success)' : 'var(--danger)'};white-space:nowrap">${r.points >= 0 ? '+' : ''}${r.points} ${t('shop.pointUnit')}</div>
-      </div>`);
-  }
-
-  // Past months: one summary row per month (Map preserves DESC insertion order)
-  for (const [ym, g] of pastGroups) {
-    const dateStr = fmtDate(ym + '-01');
-    rows.push(`
-      <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .9rem;border-bottom:1px solid var(--border);background:var(--bg3)">
-        <span style="font-size:1.3rem;flex-shrink:0">🗓️</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">${t('badge.monthSummaryName', { count: g.count })}</div>
-          <div style="font-size:.72rem;color:var(--text3)">${dateStr}</div>
-        </div>
-        <div style="font-size:.82rem;font-weight:600;color:${g.total >= 0 ? 'var(--success)' : 'var(--danger)'};white-space:nowrap">${g.total >= 0 ? '+' : ''}${g.total} ${t('shop.pointUnit')}</div>
-      </div>`);
-  }
-
-  return `
-    <div style="margin-bottom:1.5rem">
-      <div style="font-size:.78rem;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:.75rem;padding-left:.1rem">${t('badge.exchangeHistory')}</div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        ${rows.join('')}
-      </div>
-    </div>`;
-}
-
 function renderPage() {
   const systemBadges = _badges.filter(b => !b.custom);
   const customBadges = _badges.filter(b => b.custom);
@@ -267,8 +198,6 @@ function renderPage() {
           : `<div style="color:var(--text3);font-size:.85rem;padding:.5rem .1rem">${t('badge.noCustom')}</div>`
         }
       </div>
-
-      ${renderExchangeHistory(_exchanges)}
 
     </div>`;
 }

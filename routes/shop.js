@@ -47,9 +47,35 @@ router.post('/redeem/:id', userCtx, (req, res) => {
 });
 
 router.get('/history', userCtx, (req, res) => {
-  const rows = db.prepare(
-    'SELECT item_name, cost, redeemed_at FROM redemption_log WHERE user_id = ? ORDER BY redeemed_at DESC'
-  ).all(req.userId);
+  const rows = db.prepare(`
+    SELECT
+      pl.id,
+      pl.delta,
+      pl.reason,
+      pl.created_at,
+      SUM(pl.delta) OVER (ORDER BY pl.id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance,
+      CASE
+        WHEN pl.reason LIKE 'exchange:%' THEN COALESCE(bel.badge_name, pl.reason)
+        WHEN pl.reason LIKE 'redeem:%'   THEN COALESCE(ri.name, '(已刪除獎勵)')
+        ELSE pl.reason
+      END AS display_name,
+      CASE
+        WHEN pl.reason LIKE 'exchange:%' THEN COALESCE(bel.badge_icon, '🏅')
+        WHEN pl.reason LIKE 'redeem:%'   THEN '🛍️'
+        ELSE '📝'
+      END AS display_icon
+    FROM point_log pl
+    LEFT JOIN badge_exchange_log bel
+      ON bel.user_id = pl.user_id
+      AND 'exchange:' || bel.badge_id = pl.reason
+      AND bel.exchanged_at = pl.created_at
+    LEFT JOIN reward_items ri
+      ON pl.reason LIKE 'redeem:%'
+      AND ri.id = CAST(SUBSTR(pl.reason, 8) AS INTEGER)
+    WHERE pl.user_id = ?
+    ORDER BY pl.id DESC
+    LIMIT 300
+  `).all(req.userId);
   res.json(rows);
 });
 

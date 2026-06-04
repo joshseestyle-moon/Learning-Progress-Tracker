@@ -150,19 +150,23 @@ function renderHistory() {
         ? `<div style="text-align:center;padding:1.5rem 0;color:var(--text3);font-size:.88rem">
              ${t('shop.noHistory')}
            </div>`
-        : `<div style="display:flex;flex-direction:column;gap:.5rem">
+        : `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
              ${hist.map(r => {
-               const d = new Date(r.redeemed_at);
+               const d = new Date(r.created_at);
                const dateStr = d.toLocaleDateString(locale, { year:'numeric', month:'2-digit', day:'2-digit' });
                const timeStr = d.toLocaleTimeString(locale, { hour:'2-digit', minute:'2-digit' });
+               const isPos = r.delta >= 0;
                return `
-                 <div style="display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;
-                             background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm)">
-                   <div style="flex:1">
-                     <div style="font-size:.9rem;font-weight:500;color:var(--text)">${escHtml(r.item_name)}</div>
-                     <div style="font-size:.75rem;color:var(--text3);margin-top:.15rem">${dateStr} ${timeStr}</div>
+                 <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;border-bottom:1px solid var(--border)">
+                   <span style="font-size:1.2rem;flex-shrink:0">${r.display_icon}</span>
+                   <div style="flex:1;min-width:0">
+                     <div style="font-size:.88rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.display_name)}</div>
+                     <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">${dateStr} ${timeStr}</div>
                    </div>
-                   <div style="font-size:.82rem;font-weight:600;color:#e74c3c;white-space:nowrap">−${r.cost} ${t('shop.pointUnit')}</div>
+                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.1rem;flex-shrink:0">
+                     <div style="font-size:.82rem;font-weight:700;color:${isPos ? 'var(--success)' : 'var(--danger)'}">${isPos ? '+' : ''}${r.delta} ${t('shop.pointUnit')}</div>
+                     <div style="font-size:.72rem;color:var(--text3)">= ${r.balance} ${t('shop.pointUnit')}</div>
+                   </div>
                  </div>
                `;
              }).join('')}
@@ -260,7 +264,13 @@ window.shopRedeem = async function(id) {
     state.points = res.points;
     const item = state.items.find(it => it.id === id);
     if (item) {
-      state.history.unshift({ item_name: item.name, cost: item.cost, redeemed_at: new Date().toISOString() });
+      state.history.unshift({
+        display_icon: '🛍️',
+        display_name: item.name,
+        delta: -item.cost,
+        balance: res.points,
+        created_at: new Date().toISOString(),
+      });
     }
     render(_el);
   } catch (e) {
