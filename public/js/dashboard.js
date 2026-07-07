@@ -14,14 +14,16 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters, dailyTasks;
+  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments;
   try {
-    [timetable, exams, scheduled, chapters, dailyTasks] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
       get('/chapters'),
       get('/daily-tasks?date=' + todayStr),
+      get('/studylog/dashboard-stats'),
+      get('/assignments?upcoming=7'),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -68,6 +70,18 @@ export async function render(el) {
       <div class="card" id="daily-tasks-card" style="grid-column: 1 / -1;">
         <div class="card-title">${t('card.todayHomework')}</div>
         ${dailyTasksCard(dailyTasks)}
+      </div>
+
+      <!-- Today's study time vs goals + streak -->
+      <div class="card">
+        <div class="card-title">${t('card.todayStudyTime')}</div>
+        ${studyStatsCard(stats)}
+      </div>
+
+      <!-- Assignment deadlines -->
+      <div class="card">
+        <div class="card-title">${t('card.assignmentDue')}</div>
+        ${assignmentDueCard(assignments)}
       </div>
 
       <!-- Today's study progress -->
@@ -120,6 +134,18 @@ export async function render(el) {
               </div>
             </div>`;
           })() : '';
+          // Exam-prep pacing: chapters left to preview vs days remaining
+          let paceHtml = '';
+          if (prog && prog.total > 0) {
+            const remaining = prog.total - prog.prevDone;
+            if (remaining <= 0) {
+              paceHtml = `<div style="font-size:.72rem;margin-top:.35rem;color:var(--success);">${t('dash.pacePreviewDone')}</div>`;
+            } else {
+              const perDay = Math.ceil(remaining / Math.max(d, 1));
+              const paceColor = perDay >= 3 || d <= 0 ? 'var(--danger)' : perDay === 2 ? '#e67e22' : 'var(--text2)';
+              paceHtml = `<div style="font-size:.72rem;margin-top:.35rem;color:${paceColor};">${t('dash.pace', { n: remaining, m: perDay })}</div>`;
+            }
+          }
           return `
           <div style="margin-bottom:.75rem;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -131,6 +157,7 @@ export async function render(el) {
             </div>
             <div style="font-size:.85rem;margin-top:.25rem;color:var(--text2);">${escHtml(e.title)} · ${fmtDate(e.exam_date)}</div>
             ${progressBar}
+            ${paceHtml}
           </div>`;
         }).join('') : `<div class="text-muted text-sm">${t('empty.exams')}</div>`}
       </div>
@@ -146,6 +173,51 @@ function timetableCard(slots, emptyMsg) {
       <span style="font-size:.78rem;color:var(--text2);min-width:50px;">${t('tt.period', { n: s.period })}</span>
       <span class="badge" style="background:${s.subject_color}">${escHtml(s.subject_name)}</span>
     </div>`).join('');
+}
+
+function goalBar(current, goal, color) {
+  if (!goal) return '';
+  const pct = Math.min(100, Math.round(current / goal * 100));
+  return `<div style="height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;">
+      <div style="height:100%;width:${pct}%;background:${color};border-radius:999px;transition:width .3s;"></div>
+    </div>`;
+}
+
+function studyStatsCard(stats) {
+  const dayReached  = stats.daily_goal  && stats.today_minutes >= stats.daily_goal;
+  const weekReached = stats.weekly_goal && stats.week_minutes  >= stats.weekly_goal;
+  const line = (label, cur, goal, color, reached) => `
+    <div style="margin-bottom:.6rem;">
+      <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.25rem;">
+        <span style="color:var(--text2);">${label}</span>
+        <span style="font-weight:700;">${cur}${goal ? ' / ' + goal : ''} ${t('dash.minUnit')}${reached ? ' ' + t('dash.goalReached') : ''}</span>
+      </div>
+      ${goalBar(cur, goal, color)}
+    </div>`;
+  const noGoal = (!stats.daily_goal && !stats.weekly_goal)
+    ? `<div class="text-xs text-muted" style="margin-top:.3rem;">${t('dash.noGoalSet')}</div>` : '';
+  const streak = stats.current_streak > 0
+    ? `<div style="font-size:.9rem;font-weight:700;color:#f97316;margin-top:.5rem;">${t('dash.streakDays', { n: stats.current_streak })}</div>`
+    : `<div class="text-xs text-muted" style="margin-top:.5rem;">${t('dash.noStreak')}</div>`;
+  return line(t('dash.studiedToday'), stats.today_minutes, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
+    + line(t('dash.thisWeek'), stats.week_minutes, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
+    + noGoal + streak;
+}
+
+function assignmentDueCard(items) {
+  if (!items.length) return `<div class="text-muted text-sm">${t('dash.noAssignmentDue')}</div>`;
+  return items.map(a => {
+    const d = Math.ceil((new Date(a.due_date + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+    const urgency = d <= 1 ? 'urgent' : d <= 3 ? 'soon' : 'ok';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem;">
+      <div style="min-width:0;">
+        <span class="badge" style="background:${a.subject_color};margin-right:.4rem">${escHtml(a.subject_name)}</span>
+        <span style="font-size:.85rem;font-weight:600;">${escHtml(a.title)}</span>
+      </div>
+      <span class="countdown-pill ${urgency}" style="flex-shrink:0;">${d <= 0 ? t('dash.today') : t('dash.daysLeft', { n: d })}</span>
+    </div>`;
+  }).join('');
 }
 
 function overdueCard(items) {

@@ -2,6 +2,8 @@ const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { checkBadges } = require('../badges/checker');
+const { computeCurrentStreak } = require('../utils/streak');
+const { clampText, LIMITS } = require('../utils/validate');
 
 router.get('/', userCtx, (req, res) => {
   let sql = `SELECT sl.*, s.name AS subject_name, s.color AS subject_color,
@@ -41,9 +43,77 @@ router.get('/by-chapter', userCtx, (req, res) => {
   res.json(rows);
 });
 
+// Heatmap: total minutes per day for the last N days (GitHub-style calendar)
+router.get('/heatmap', userCtx, (req, res) => {
+  const days = Math.max(1, Math.min(730, parseInt(req.query.days) || 365));
+  const rows = db.prepare(`
+    SELECT log_date, SUM(minutes) AS minutes
+    FROM study_log
+    WHERE user_id = ? AND log_date >= date('now','localtime',?)
+    GROUP BY log_date
+    ORDER BY log_date ASC
+  `).all(req.userId, `-${days - 1} days`);
+  res.json(rows);
+});
+
+// Monthly trend: minutes per month per subject for the last N months
+router.get('/monthly', userCtx, (req, res) => {
+  const months = Math.max(1, Math.min(24, parseInt(req.query.months) || 6));
+  const rows = db.prepare(`
+    SELECT strftime('%Y-%m', sl.log_date) AS month,
+           s.name AS subject_name, s.color AS subject_color,
+           SUM(sl.minutes) AS total_minutes
+    FROM study_log sl JOIN subjects s ON s.id = sl.subject_id
+    WHERE sl.user_id = ? AND sl.log_date >= date('now','localtime','start of month',?)
+    GROUP BY month, sl.subject_id
+    ORDER BY month ASC
+  `).all(req.userId, `-${months - 1} months`);
+  res.json(rows);
+});
+
+// All-time summary
+router.get('/summary', userCtx, (req, res) => {
+  const total = db.prepare('SELECT COALESCE(SUM(minutes),0) AS m FROM study_log WHERE user_id = ?').get(req.userId).m;
+  const activeDays = db.prepare('SELECT COUNT(DISTINCT log_date) AS d FROM study_log WHERE user_id = ?').get(req.userId).d;
+  res.json({
+    total_minutes: total,
+    active_days: activeDays,
+    avg_per_active_day: activeDays ? Math.round(total / activeDays) : 0,
+  });
+});
+
+// Current study streak (consecutive days ending today or yesterday)
+router.get('/streak', userCtx, (req, res) => {
+  const dates = db.prepare('SELECT DISTINCT log_date FROM study_log WHERE user_id = ? ORDER BY log_date ASC')
+    .all(req.userId).map(r => r.log_date);
+  res.json({ streak: computeCurrentStreak(dates) });
+});
+
+// Dashboard summary: today / this week minutes vs goals + current streak (one round-trip)
+router.get('/dashboard-stats', userCtx, (req, res) => {
+  const todayMin = db.prepare(
+    `SELECT COALESCE(SUM(minutes),0) AS m FROM study_log WHERE user_id = ? AND log_date = date('now','localtime')`
+  ).get(req.userId).m;
+  const weekMin = db.prepare(
+    `SELECT COALESCE(SUM(minutes),0) AS m FROM study_log WHERE user_id = ? AND log_date >= date('now','localtime','-6 days')`
+  ).get(req.userId).m;
+  const dates = db.prepare('SELECT DISTINCT log_date FROM study_log WHERE user_id = ? ORDER BY log_date ASC')
+    .all(req.userId).map(r => r.log_date);
+  const user = db.prepare('SELECT daily_goal_minutes, weekly_goal_minutes FROM users WHERE id = ?').get(req.userId) || {};
+  res.json({
+    today_minutes: todayMin,
+    week_minutes: weekMin,
+    current_streak: computeCurrentStreak(dates),
+    daily_goal: user.daily_goal_minutes || 0,
+    weekly_goal: user.weekly_goal_minutes || 0,
+  });
+});
+
 router.post('/', userCtx, (req, res) => {
-  const { subject_id, log_date, minutes, note, chapter_id } = req.body;
+  const { subject_id, log_date, minutes, chapter_id } = req.body;
+  const { value: note, tooLong } = clampText(req.body.note, LIMITS.note);
   if (!subject_id || !log_date || !minutes) return res.status(400).json({ error: '缺少必要欄位' });
+  if (tooLong) return res.status(400).json({ error: '備註過長' });
   const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
   if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(

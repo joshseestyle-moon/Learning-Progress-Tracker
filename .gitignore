@@ -23,3 +23,6 @@ desktop.ini
 
 # 本地筆記
 PROJECT_MEMORY.md
+
+# Playwright 測試產出
+.playwright-mcp/

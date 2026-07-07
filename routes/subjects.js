@@ -1,17 +1,20 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
+const { clampText, LIMITS } = require('../utils/validate');
 
 router.get('/', userCtx, (req, res) => {
   res.json(db.prepare('SELECT * FROM subjects WHERE user_id = ? ORDER BY id').all(req.userId));
 });
 
 router.post('/', userCtx, (req, res) => {
-  const { name, color = '#4a90d9' } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: '科目名稱不能為空' });
+  const { color = '#4a90d9' } = req.body;
+  const { value: name, tooLong } = clampText(req.body.name, LIMITS.name);
+  if (!name) return res.status(400).json({ error: '科目名稱不能為空' });
+  if (tooLong) return res.status(400).json({ error: '科目名稱過長' });
   const result = db.prepare('INSERT INTO subjects (user_id, name, color) VALUES (?, ?, ?)')
-    .run(req.userId, name.trim(), color);
-  res.status(201).json({ id: result.lastInsertRowid, name: name.trim(), color });
+    .run(req.userId, name, color);
+  res.status(201).json({ id: result.lastInsertRowid, name, color });
 });
 
 router.put('/:id', userCtx, (req, res) => {

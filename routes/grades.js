@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { checkBadges } = require('../badges/checker');
+const { clampText, LIMITS } = require('../utils/validate');
 
 router.get('/', userCtx, (req, res) => {
   let sql = `SELECT g.*, s.name AS subject_name, s.color AS subject_color
@@ -14,9 +15,12 @@ router.get('/', userCtx, (req, res) => {
 });
 
 router.post('/', userCtx, (req, res) => {
-  const { subject_id, exam_id, exam_name, exam_date, score, max_score = 100, notes, class_rank } = req.body;
+  const { subject_id, exam_id, exam_date, score, max_score = 100, class_rank } = req.body;
+  const { value: exam_name, tooLong: nameTooLong } = clampText(req.body.exam_name, LIMITS.title);
+  const { value: notes, tooLong: notesTooLong } = clampText(req.body.notes, LIMITS.note);
   if (!subject_id || !exam_name || !exam_date || score === undefined)
     return res.status(400).json({ error: '缺少必要欄位' });
+  if (nameTooLong || notesTooLong) return res.status(400).json({ error: '名稱或備註過長' });
   const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
   if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(

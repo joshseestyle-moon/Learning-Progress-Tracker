@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { checkBadges } = require('../badges/checker');
+const { clampText, LIMITS } = require('../utils/validate');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,12 +42,13 @@ router.get('/', userCtx, (req, res) => {
 });
 
 router.post('/', userCtx, (req, res) => {
-  const { title, task_date, subject_id, total_parts } = req.body;
-  const trimmedTitle = (title || '').trim();
+  const { task_date, subject_id, total_parts } = req.body;
+  const { value: trimmedTitle, tooLong } = clampText(req.body.title, LIMITS.title);
   // Require at least a title or a subject so the task is always identifiable
   if (!task_date || (!trimmedTitle && !subject_id)) {
     return res.status(400).json({ error: '缺少必要欄位' });
   }
+  if (tooLong) return res.status(400).json({ error: '標題過長' });
   // Validate subject ownership
   if (subject_id) {
     const sub = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);

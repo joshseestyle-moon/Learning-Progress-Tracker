@@ -1,20 +1,8 @@
 const db     = require('../db/db');
 const BADGES = require('./definitions');
+const { computeMaxStreak } = require('../utils/streak');
 
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
-
-function computeMaxStreak(sortedDates) {
-  if (!sortedDates.length) return 0;
-  let max = 1, cur = 1;
-  for (let i = 1; i < sortedDates.length; i++) {
-    const a = new Date(sortedDates[i - 1]);
-    const b = new Date(sortedDates[i]);
-    const diffDays = Math.round((b - a) / 86400000);
-    if (diffDays === 1) { cur++; if (cur > max) max = cur; }
-    else if (diffDays > 1) cur = 1;
-  }
-  return max;
-}
 
 function checkBadges(userId) {
   const earned = new Set(

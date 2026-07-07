@@ -3,6 +3,7 @@ const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
 const { getBalance } = require('../utils/points');
+const { clampText, LIMITS } = require('../utils/validate');
 
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const VALID_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
@@ -50,12 +51,13 @@ router.get('/', userCtx, (req, res) => {
 
 // ── Custom badge CRUD ──────────────────────────────────────────
 router.post('/custom', userCtx, (req, res) => {
-  const name     = (req.body.name || '').trim();
-  const icon     = (req.body.icon || '🏅').trim() || '🏅';
-  const desc     = (req.body.desc || '').trim();
+  const { value: name, tooLong: nameTooLong } = clampText(req.body.name, LIMITS.name);
+  const icon     = (req.body.icon || '🏅').trim().slice(0, 8) || '🏅';
+  const { value: desc, tooLong: descTooLong } = clampText(req.body.desc, LIMITS.note);
   const points   = Math.max(0, parseInt(req.body.points) || 0);
   const category = VALID_CATEGORIES.includes(req.body.category) ? req.body.category : '自訂';
   if (!name) return res.status(400).json({ error: '請輸入成就名稱' });
+  if (nameTooLong || descTooLong) return res.status(400).json({ error: '成就名稱或說明過長' });
 
   const result = db.prepare(
     'INSERT INTO custom_badges (user_id, name, icon, desc, points, category) VALUES (?, ?, ?, ?, ?, ?)'

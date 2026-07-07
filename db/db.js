@@ -310,6 +310,15 @@ function openAndMigrate() {
   const bfPart = db.prepare('INSERT OR IGNORE INTO daily_task_parts (task_id, part_num, is_done) VALUES (?, 1, ?)');
   for (const t of orphanTasks) bfPart.run(t.id, t.is_done);
 
+  // Migration 18: per-user study-time goals (daily / weekly, in minutes; 0 = unset)
+  const userCols2 = db.pragma('table_info(users)').map(c => c.name);
+  if (!userCols2.includes('daily_goal_minutes')) {
+    db.exec('ALTER TABLE users ADD COLUMN daily_goal_minutes INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!userCols2.includes('weekly_goal_minutes')) {
+    db.exec('ALTER TABLE users ADD COLUMN weekly_goal_minutes INTEGER NOT NULL DEFAULT 0');
+  }
+
   return db;
 }
 

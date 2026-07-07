@@ -3,6 +3,7 @@ const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
 const { getBalance } = require('../utils/points');
+const { clampText, LIMITS } = require('../utils/validate');
 
 const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const _badgeMap  = new Map(BADGES.map(b => [b.id, { name: b.name, icon: b.icon }]));
@@ -17,8 +18,9 @@ router.get('/items', userCtx, (req, res) => {
 });
 
 router.post('/items', userCtx, (req, res) => {
-  const name = (req.body.name || '').trim();
+  const { value: name, tooLong } = clampText(req.body.name, LIMITS.name);
   if (!name) return res.status(400).json({ error: '請輸入獎勵名稱' });
+  if (tooLong) return res.status(400).json({ error: '獎勵名稱過長' });
   const cost = Math.max(0, parseInt(req.body.cost) || 0);
   const result = db.prepare('INSERT INTO reward_items (user_id, name, cost) VALUES (?, ?, ?)').run(req.userId, name, cost);
   res.json({ id: result.lastInsertRowid, user_id: req.userId, name, cost });
@@ -36,7 +38,10 @@ const redeemTx = db.transaction((userId, item, now) => {
   if (balance < item.cost) return null;
   db.prepare('INSERT INTO point_log (user_id, delta, reason, created_at) VALUES (?, ?, ?, ?)').run(userId, -item.cost, 'redeem:' + item.id, now);
   db.prepare('INSERT INTO redemption_log (user_id, item_name, cost, redeemed_at) VALUES (?, ?, ?, ?)').run(userId, item.name, item.cost, now);
-  return balance - item.cost;
+  // Defensive guard: balance must never go negative — rolls back the transaction if it does
+  const after = getBalance(userId);
+  if (after < 0) throw new Error('insufficient balance');
+  return after;
 });
 
 router.post('/redeem/:id', userCtx, (req, res) => {

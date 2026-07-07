@@ -2,6 +2,30 @@ const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { checkBadges } = require('../badges/checker');
+const { nextReviewDate } = require('../utils/srs');
+const { clampText, LIMITS } = require('../utils/validate');
+
+// Spaced repetition: when a preview or review session is just completed, auto-
+// schedule the next review session (unless one already exists). Returns the new
+// review row {id, seq, scheduled_date} or null. Callers pass the record that was
+// just marked done and whether it transitioned into the done state.
+function maybeScheduleNextReview(userId, record, becameDone, optOut) {
+  if (optOut || !becameDone) return null;
+  if (record.type !== 'preview' && record.type !== 'review') return null;
+  const nextSeq = record.type === 'preview' ? 1 : record.seq + 1;
+  const dup = db.prepare(
+    "SELECT id FROM chapter_progress WHERE user_id = ? AND chapter_id = ? AND type = 'review' AND seq = ?"
+  ).get(userId, record.chapter_id, nextSeq);
+  if (dup) return null;
+  // Use LOCAL date (not UTC) to match the rest of the app's date handling
+  const n = new Date();
+  const doneDate = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  const scheduled = nextReviewDate(doneDate, nextSeq);
+  const r = db.prepare(
+    "INSERT INTO chapter_progress (user_id,chapter_id,type,seq,scheduled_date,is_done) VALUES (?,?,'review',?,?,0)"
+  ).run(userId, record.chapter_id, nextSeq, scheduled);
+  return { id: r.lastInsertRowid, seq: nextSeq, scheduled_date: scheduled };
+}
 
 // GET / — chapters with preview info + all review sessions
 router.get('/', userCtx, (req, res) => {
@@ -68,8 +92,10 @@ router.patch('/progress/:progressId', userCtx, (req, res) => {
       newNotes,
       existing.id
     );
-  const newBadges = (newDone && !existing.is_done) ? checkBadges(req.userId) : [];
-  res.json({ ok: true, is_done: newDone, newBadges });
+  const becameDone = newDone && !existing.is_done;
+  const nextReview = maybeScheduleNextReview(req.userId, existing, becameDone, req.body.auto_schedule === false);
+  const newBadges = becameDone ? checkBadges(req.userId) : [];
+  res.json({ ok: true, is_done: newDone, newBadges, nextReview });
 });
 
 // DELETE /progress/:progressId — delete a review session (preview cannot be deleted)
@@ -85,8 +111,10 @@ router.delete('/progress/:progressId', userCtx, (req, res) => {
 
 // POST / — create chapter
 router.post('/', userCtx, (req, res) => {
-  const { subject_id, title, sort_order = 0 } = req.body;
+  const { subject_id, sort_order = 0 } = req.body;
+  const { value: title, tooLong } = clampText(req.body.title, LIMITS.name);
   if (!subject_id || !title) return res.status(400).json({ error: '缺少必要欄位' });
+  if (tooLong) return res.status(400).json({ error: '章節名稱過長' });
   const subject = db.prepare('SELECT id FROM subjects WHERE id = ? AND user_id = ?').get(subject_id, req.userId);
   if (!subject) return res.status(403).json({ error: '科目不存在' });
   const result = db.prepare(
@@ -143,16 +171,21 @@ router.patch('/:id/progress', userCtx, (req, res) => {
     const newNotes = notes !== undefined ? (notes.trim() || null) : existing.notes;
     db.prepare('UPDATE chapter_progress SET is_done=?,done_at=?,scheduled_date=?,notes=? WHERE id=?')
       .run(newDone, newDone && !existing.done_at ? new Date().toISOString() : (newDone ? existing.done_at : null), newDate, newNotes, existing.id);
-    const newBadges = (newDone && !existing.is_done) ? checkBadges(req.userId) : [];
-    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes, newBadges });
+    const becameDone = newDone && !existing.is_done;
+    const nextReview = maybeScheduleNextReview(req.userId, existing, becameDone, req.body.auto_schedule === false);
+    const newBadges = becameDone ? checkBadges(req.userId) : [];
+    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes, newBadges, nextReview });
   } else {
     const isDone   = toggle_done ? 1 : 0;
     const newNotes = notes !== undefined ? (notes.trim() || null) : null;
     db.prepare(
       'INSERT INTO chapter_progress (user_id,chapter_id,type,seq,scheduled_date,is_done,done_at,notes) VALUES (?,?,?,1,?,?,?,?)'
     ).run(req.userId, req.params.id, type, scheduled_date || null, isDone, isDone ? new Date().toISOString() : null, newNotes);
+    const nextReview = maybeScheduleNextReview(
+      req.userId, { chapter_id: +req.params.id, type, seq: 1 }, isDone === 1, req.body.auto_schedule === false
+    );
     const newBadges = isDone ? checkBadges(req.userId) : [];
-    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, notes: newNotes, newBadges });
+    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, notes: newNotes, newBadges, nextReview });
   }
 });
 

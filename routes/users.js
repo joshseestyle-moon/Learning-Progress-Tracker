@@ -2,7 +2,7 @@ const router = require('express').Router();
 const db = require('../db/db');
 
 router.get('/', (req, res) => {
-  const users = db.prepare('SELECT id, name, avatar_color, lang, is_admin FROM users ORDER BY id').all();
+  const users = db.prepare('SELECT id, name, avatar_color, lang, is_admin, daily_goal_minutes, weekly_goal_minutes FROM users ORDER BY id').all();
   res.json(users);
 });
 
@@ -16,14 +16,19 @@ router.post('/', (req, res) => {
 });
 
 router.put('/:id', (req, res) => {
-  const { name, avatar_color, lang } = req.body;
-  const user = db.prepare('SELECT id, name, avatar_color, lang FROM users WHERE id = ?').get(req.params.id);
+  const { name, avatar_color, lang, daily_goal_minutes, weekly_goal_minutes } = req.body;
+  const user = db.prepare('SELECT id, name, avatar_color, lang, daily_goal_minutes, weekly_goal_minutes FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: '使用者不存在' });
   const validLangs = ['zh-TW', 'en', 'ja'];
   const newLang = validLangs.includes(lang) ? lang : (user.lang || 'zh-TW');
-  db.prepare('UPDATE users SET name = ?, avatar_color = ?, lang = ? WHERE id = ?')
-    .run(name || user.name, avatar_color || user.avatar_color, newLang, req.params.id);
-  res.json({ ok: true });
+  // Goals: clamp to sane ranges (daily ≤ 24h, weekly ≤ 7 days); 0 = unset
+  const clampGoal = (v, cur, max) =>
+    v === undefined ? cur : Math.max(0, Math.min(max, parseInt(v) || 0));
+  const daily  = clampGoal(daily_goal_minutes,  user.daily_goal_minutes,  1440);
+  const weekly = clampGoal(weekly_goal_minutes, user.weekly_goal_minutes, 10080);
+  db.prepare('UPDATE users SET name = ?, avatar_color = ?, lang = ?, daily_goal_minutes = ?, weekly_goal_minutes = ? WHERE id = ?')
+    .run(name || user.name, avatar_color || user.avatar_color, newLang, daily, weekly, req.params.id);
+  res.json({ ok: true, daily_goal_minutes: daily, weekly_goal_minutes: weekly });
 });
 
 router.delete('/:id', (req, res) => {

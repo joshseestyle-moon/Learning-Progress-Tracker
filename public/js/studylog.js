@@ -1,8 +1,9 @@
-import { get, post, del, escHtml, today } from './api.js';
+import { get, post, put, del, escHtml, today, getUserId, fmtMonth } from './api.js';
 import { t } from './i18n.js';
 
 let subjects = [];
 let allChapters = [];
+let userGoals = { daily_goal_minutes: 0, weekly_goal_minutes: 0 };
 let timerInterval = null;
 let timerSeconds = 0;
 let timerRunning = false;
@@ -20,11 +21,26 @@ export async function render(el) {
 }
 
 async function refresh(el) {
-  const logs   = await get('/studylog');
-  const weekly = await get('/studylog/weekly');
-  el.innerHTML = buildPage(logs, weekly);
+  const [logs, weekly, heatmap, monthly, summary, streak, users] = await Promise.all([
+    get('/studylog'),
+    get('/studylog/weekly'),
+    get('/studylog/heatmap?days=364'),
+    get('/studylog/monthly?months=6'),
+    get('/studylog/summary'),
+    get('/studylog/streak'),
+    get('/users'),
+  ]);
+  summary.streak = streak.streak;
+  const me = users.find(u => String(u.id) === String(getUserId())) || {};
+  userGoals = {
+    daily_goal_minutes:  me.daily_goal_minutes  || 0,
+    weekly_goal_minutes: me.weekly_goal_minutes || 0,
+  };
+  el.innerHTML = buildPage(logs, weekly, summary);
   attachEvents(el, logs);
   renderChart(el, weekly);
+  renderHeatmap(el, heatmap);
+  renderMonthly(el, monthly);
 }
 
 function chaptersForSubject(subjectId) {
@@ -39,9 +55,44 @@ function chapterSelect(id, subjectId, selected) {
   </select>`;
 }
 
-function buildPage(logs, weekly) {
+function fmtHM(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h && m) return `${h}${t('sl.hourUnit')}${m}${t('sl.minUnit')}`;
+  if (h) return `${h}${t('sl.hourUnit')}`;
+  return `${m}${t('sl.minUnit')}`;
+}
+
+function buildPage(logs, weekly, summary) {
   const firstSubjectId = subjects[0]?.id || '';
   return `
+    <!-- Goals + overview -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
+      <div class="card">
+        <div class="card-title">${t('sl.goalSettings')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">${t('sl.dailyGoalMin')}</label>
+            <input id="goal-daily" type="number" class="form-input" min="0" max="1440" value="${userGoals.daily_goal_minutes || ''}" placeholder="0">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">${t('sl.weeklyGoalMin')}</label>
+            <input id="goal-weekly" type="number" class="form-input" min="0" max="10080" value="${userGoals.weekly_goal_minutes || ''}" placeholder="0">
+          </div>
+        </div>
+        <button class="btn btn-primary w-full" id="goal-save" style="margin-top:.75rem;">${t('sl.saveGoal')}</button>
+        <div id="goal-msg" style="font-size:.8rem;color:var(--success);margin-top:.4rem;min-height:1rem;text-align:center;"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">${t('sl.summary')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem 1rem;">
+          <div><div style="font-size:1.5rem;font-weight:800;color:var(--accent);">${fmtHM(summary.total_minutes || 0)}</div><div class="text-xs text-muted">${t('sl.totalStudied')}</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;">${summary.active_days || 0} ${t('sl.dayUnit')}</div><div class="text-xs text-muted">${t('sl.activeDays')}</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;">${summary.avg_per_active_day || 0} ${t('sl.minUnit')}</div><div class="text-xs text-muted">${t('sl.avgPerDay')}</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#f97316;">${summary.streak || 0} ${t('sl.dayUnit')}</div><div class="text-xs text-muted">${t('sl.currentStreak')}</div></div>
+        </div>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
       <!-- Manual entry -->
       <div class="card">
@@ -100,6 +151,18 @@ function buildPage(logs, weekly) {
     <div class="card" style="margin-bottom:1.25rem;">
       <div class="card-title">${t('sl.weeklyChart')}</div>
       <canvas id="study-chart" height="120"></canvas>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">${t('sl.heatmap')}</div>
+      <div id="study-heatmap" style="overflow-x:auto;"></div>
+    </div>
+
+    <!-- Monthly trend -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">${t('sl.monthlyTrend')}</div>
+      <canvas id="monthly-chart" height="120"></canvas>
     </div>
 
     <!-- Log table -->
@@ -174,6 +237,97 @@ function renderChart(el, weekly) {
   });
 }
 
+const HEAT_COLORS = ['var(--bg3)', '#9be9a8', '#40c463', '#30a14e', '#216e39'];
+function heatLevel(min) {
+  if (!min) return 0;
+  if (min <= 30) return 1;
+  if (min <= 60) return 2;
+  if (min <= 120) return 3;
+  return 4;
+}
+function _dkey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function renderHeatmap(el, rows) {
+  const container = el.querySelector('#study-heatmap');
+  if (!container) return;
+  const map = {};
+  for (const r of rows) map[r.log_date] = r.minutes;
+
+  const end = new Date(); end.setHours(0, 0, 0, 0);
+  const start = new Date(end); start.setDate(start.getDate() - 363);
+  // Align start to Monday (getDay 0=Sun..6=Sat; week starts Monday here)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+
+  const cols = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      if (cur <= end) {
+        const ds = _dkey(cur);
+        week.push({ ds, min: map[ds] || 0 });
+      } else {
+        week.push(null);
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    cols.push(week);
+  }
+
+  const colHtml = cols.map(week => `
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      ${week.map(c => c
+        ? `<div title="${t('sl.heatmapCell', { date: c.ds, min: c.min })}"
+               style="width:11px;height:11px;border-radius:2px;background:${HEAT_COLORS[heatLevel(c.min)]};"></div>`
+        : `<div style="width:11px;height:11px;"></div>`).join('')}
+    </div>`).join('');
+
+  const legend = `
+    <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:.5rem;font-size:.7rem;color:var(--text3);">
+      <span>${t('sl.heatmapLess')}</span>
+      ${HEAT_COLORS.map(c => `<div style="width:11px;height:11px;border-radius:2px;background:${c};"></div>`).join('')}
+      <span>${t('sl.heatmapMore')}</span>
+    </div>`;
+
+  container.innerHTML = `<div style="display:flex;gap:3px;min-width:max-content;">${colHtml}</div>${legend}`;
+}
+
+function renderMonthly(el, rows) {
+  const canvas = el.querySelector('#monthly-chart');
+  if (!canvas || !window.Chart) return;
+  if (!rows.length) {
+    canvas.replaceWith(Object.assign(document.createElement('div'), {
+      className: 'text-muted text-sm', textContent: t('sl.noData'),
+    }));
+    return;
+  }
+  const months = [...new Set(rows.map(r => r.month))].sort();
+  const subjectColors = {};
+  const byKey = {};
+  for (const r of rows) {
+    subjectColors[r.subject_name] = r.subject_color;
+    byKey[r.month + '|' + r.subject_name] = r.total_minutes;
+  }
+  const datasets = Object.keys(subjectColors).map(name => ({
+    label: name,
+    data: months.map(m => byKey[m + '|' + name] || 0),
+    backgroundColor: subjectColors[name] + 'cc',
+    borderColor: subjectColors[name],
+    borderWidth: 1,
+  }));
+  new window.Chart(canvas, {
+    type: 'bar',
+    data: { labels: months.map(m => fmtMonth(m)), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+    },
+  });
+}
+
 function updateDisplay() {
   const h = Math.floor(timerSeconds / 3600).toString().padStart(2,'0');
   const m = Math.floor((timerSeconds % 3600) / 60).toString().padStart(2,'0');
@@ -182,6 +336,24 @@ function updateDisplay() {
 }
 
 function attachEvents(el, logs) {
+  // Study goals
+  const goalSave = el.querySelector('#goal-save');
+  if (goalSave) {
+    goalSave.onclick = async () => {
+      const daily  = Math.max(0, parseInt(el.querySelector('#goal-daily').value) || 0);
+      const weekly = Math.max(0, parseInt(el.querySelector('#goal-weekly').value) || 0);
+      try {
+        await put('/users/' + getUserId(), { daily_goal_minutes: daily, weekly_goal_minutes: weekly });
+        userGoals = { daily_goal_minutes: daily, weekly_goal_minutes: weekly };
+        const msg = el.querySelector('#goal-msg');
+        msg.textContent = t('sl.goalSaved');
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+      } catch (e) {
+        alert(t('alert.saveFailed', { msg: e.message }));
+      }
+    };
+  }
+
   el.querySelector('#sl-subject').onchange = (e) => {
     el.querySelector('#sl-chapter-wrap').innerHTML = chapterSelect('sl-chapter', e.target.value, '');
   };
