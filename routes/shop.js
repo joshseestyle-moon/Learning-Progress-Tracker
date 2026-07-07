@@ -48,7 +48,13 @@ router.post('/redeem/:id', userCtx, (req, res) => {
   const item = db.prepare('SELECT * FROM reward_items WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!item) return res.status(404).json({ error: '獎勵不存在' });
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const newBalance = redeemTx(req.userId, item, now);
+  let newBalance;
+  try {
+    newBalance = redeemTx(req.userId, item, now);
+  } catch (_) {
+    // Defensive negative-balance guard tripped (rolled back) — treat as insufficient
+    return res.status(400).json({ error: '點數不足' });
+  }
   if (newBalance === null) return res.status(400).json({ error: '點數不足' });
   res.json({ ok: true, points: newBalance });
 });

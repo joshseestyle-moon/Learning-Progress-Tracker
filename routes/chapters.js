@@ -12,11 +12,15 @@ const { clampText, LIMITS } = require('../utils/validate');
 function maybeScheduleNextReview(userId, record, becameDone, optOut) {
   if (optOut || !becameDone) return null;
   if (record.type !== 'preview' && record.type !== 'review') return null;
+  // Only chain forward from the newest review (or a preview) — never back-fill a
+  // gap left by a manually-deleted middle review, and never re-schedule from an
+  // older review when a later one already exists.
+  const maxSeq = db.prepare(
+    "SELECT COALESCE(MAX(seq), 0) AS m FROM chapter_progress WHERE user_id = ? AND chapter_id = ? AND type = 'review'"
+  ).get(userId, record.chapter_id).m;
+  if (record.type === 'review' && record.seq !== maxSeq) return null;
   const nextSeq = record.type === 'preview' ? 1 : record.seq + 1;
-  const dup = db.prepare(
-    "SELECT id FROM chapter_progress WHERE user_id = ? AND chapter_id = ? AND type = 'review' AND seq = ?"
-  ).get(userId, record.chapter_id, nextSeq);
-  if (dup) return null;
+  if (nextSeq <= maxSeq) return null; // a review at/after this seq already exists
   // Use LOCAL date (not UTC) to match the rest of the app's date handling
   const n = new Date();
   const doneDate = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;

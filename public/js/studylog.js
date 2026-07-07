@@ -21,20 +21,18 @@ export async function render(el) {
 }
 
 async function refresh(el) {
-  const [logs, weekly, heatmap, monthly, summary, streak, users] = await Promise.all([
+  const [logs, weekly, heatmap, monthly, summary, stats] = await Promise.all([
     get('/studylog'),
     get('/studylog/weekly'),
     get('/studylog/heatmap?days=364'),
     get('/studylog/monthly?months=6'),
     get('/studylog/summary'),
-    get('/studylog/streak'),
-    get('/users'),
+    get('/studylog/dashboard-stats'),
   ]);
-  summary.streak = streak.streak;
-  const me = users.find(u => String(u.id) === String(getUserId())) || {};
+  summary.streak = stats.current_streak;
   userGoals = {
-    daily_goal_minutes:  me.daily_goal_minutes  || 0,
-    weekly_goal_minutes: me.weekly_goal_minutes || 0,
+    daily_goal_minutes:  stats.daily_goal  || 0,
+    weekly_goal_minutes: stats.weekly_goal || 0,
   };
   el.innerHTML = buildPage(logs, weekly, summary);
   attachEvents(el, logs);

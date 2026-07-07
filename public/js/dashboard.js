@@ -1,4 +1,4 @@
-import { get, post, patch, escHtml, fmtDate, today } from './api.js';
+import { get, post, patch, escHtml, fmtDate, today, daysLeft } from './api.js';
 import { t } from './i18n.js';
 
 let _el = null;
@@ -199,15 +199,15 @@ function studyStatsCard(stats) {
   const streak = stats.current_streak > 0
     ? `<div style="font-size:.9rem;font-weight:700;color:#f97316;margin-top:.5rem;">${t('dash.streakDays', { n: stats.current_streak })}</div>`
     : `<div class="text-xs text-muted" style="margin-top:.5rem;">${t('dash.noStreak')}</div>`;
-  return line(t('dash.studiedToday'), stats.today_minutes, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
-    + line(t('dash.thisWeek'), stats.week_minutes, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
+  return line(t('dash.studiedToday'), stats.today_minutes || 0, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
+    + line(t('dash.thisWeek'), stats.week_minutes || 0, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
     + noGoal + streak;
 }
 
 function assignmentDueCard(items) {
   if (!items.length) return `<div class="text-muted text-sm">${t('dash.noAssignmentDue')}</div>`;
   return items.map(a => {
-    const d = Math.ceil((new Date(a.due_date + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+    const d = daysLeft(a.due_date);
     const urgency = d <= 1 ? 'urgent' : d <= 3 ? 'soon' : 'ok';
     return `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem;">

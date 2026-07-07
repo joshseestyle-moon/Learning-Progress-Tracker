@@ -25,7 +25,7 @@ router.get('/weekly', userCtx, (req, res) => {
     SELECT s.name AS subject_name, s.color AS subject_color,
            sl.log_date, SUM(sl.minutes) AS total_minutes
     FROM study_log sl JOIN subjects s ON s.id = sl.subject_id
-    WHERE sl.user_id = ? AND sl.log_date >= date('now', '-6 days')
+    WHERE sl.user_id = ? AND sl.log_date >= date('now', 'localtime', '-6 days')
     GROUP BY sl.subject_id, sl.log_date
     ORDER BY sl.log_date ASC
   `).all(req.userId);
