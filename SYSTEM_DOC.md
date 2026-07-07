@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：3.4　　最後更新：2026-06-04
+> 版本：3.5　　最後更新：2026-07-08
 
 ---
 
@@ -247,6 +247,8 @@ subjects ──┬── timetable_slots
 | `avatar_color` | TEXT | 頭像顏色（CSS hex） |
 | `is_admin` | INTEGER | 管理員標記（0/1，目前純展示用） |
 | `lang` | TEXT | 介面語系（`zh-TW` / `en` / `ja`，預設 `zh-TW`）（Migration 15） |
+| `daily_goal_minutes` | INTEGER | 每日讀書目標（分鐘，0 = 未設定）（Migration 18） |
+| `weekly_goal_minutes` | INTEGER | 每週讀書目標（分鐘，0 = 未設定）（Migration 18） |
 | `created_at` | TEXT | 建立時間（ISO 8601） |
 
 #### `subjects` — 科目（每人各自獨立）
@@ -622,8 +624,16 @@ subjects ──┬── timetable_slots
 | GET | `/api/studylog` | 取得記錄列表，支援 `from`/`to` 日期篩選 |
 | GET | `/api/studylog/weekly` | 近 7 天各科目每日分鐘數（供圖表用） |
 | GET | `/api/studylog/by-chapter` | 各章節累積讀書分鐘數 |
+| GET | `/api/studylog/heatmap` | 每日總分鐘數（`?days=` 天數，供全年熱力圖用）（v3.5） |
+| GET | `/api/studylog/monthly` | 各月各科目分鐘數（`?months=` 月數，供月趨勢圖用）（v3.5） |
+| GET | `/api/studylog/summary` | 累計分鐘、學習天數、平均每日（v3.5） |
+| GET | `/api/studylog/streak` | 目前連續學習天數（v3.5） |
+| GET | `/api/studylog/dashboard-stats` | 今日/本週分鐘、目標、連續天數（供儀表板一次載入）（v3.5） |
 | POST | `/api/studylog` | 新增記錄 |
 | DELETE | `/api/studylog/:id` | 刪除記錄 |
+
+> 讀書目標透過 `PUT /api/users/:id`（`daily_goal_minutes` / `weekly_goal_minutes`）設定。
+> 章節複習完成後會依間隔重複自動排定下次複習（見 `utils/srs.js`，間隔 1/3/7/16/35 天）。
 
 **POST 請求體**
 ```json

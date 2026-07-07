@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：3.4　　最後更新：2026-06-04  
+> 版本：3.5　　最後更新：2026-07-08  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -722,7 +722,7 @@ CREATE INDEX idx_badge_exchange_log_user_badge ON badge_exchange_log(user_id, ba
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 17 個遷移
+### 已實作的 18 個遷移
 
 #### Migration 1：課表欄位重構
 
@@ -1259,6 +1259,7 @@ CREATE TABLE users (
     avatar_color TEXT    NOT NULL DEFAULT '#6c8ebf',
     is_admin     INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+    -- lang (Migration 15), daily_goal_minutes / weekly_goal_minutes (Migration 18) 由遷移新增
 );
 ```
 
@@ -1268,6 +1269,9 @@ CREATE TABLE users (
 | `name` | TEXT | — | 顯示於個人選擇頁與側邊欄 |
 | `avatar_color` | TEXT | `#6c8ebf` | 頭像背景色（CSS hex），建立時可自選 |
 | `is_admin` | INTEGER | `0` | 管理員標記（0/1），目前僅作展示用，無功能差異 |
+| `lang` | TEXT | `zh-TW` | 介面語系（Migration 15） |
+| `daily_goal_minutes` | INTEGER | `0` | 每日讀書目標分鐘（0 = 未設定，Migration 18） |
+| `weekly_goal_minutes` | INTEGER | `0` | 每週讀書目標分鐘（0 = 未設定，Migration 18） |
 | `created_at` | TEXT | `datetime('now')` | UTC ISO-8601，SQLite 原生格式 |
 
 **刪除行為**：刪除 user 會 CASCADE 刪除其所有個人資料（subjects、timetable_slots、assignments、exams、chapter_progress、study_log、grades）。
@@ -1640,6 +1644,20 @@ for (const t of orphanTasks) bfPart.run(t.id, t.is_done);
 
 > `daily_tasks.is_done` 為衍生欄位（等於「所有 parts is_done=1」），由路由 handler 在更新 parts 時同步維持，不由 DB 計算。
 
+#### Migration 18：使用者讀書目標（`daily_goal_minutes` + `weekly_goal_minutes`）
+
+**觸發條件**：`users` 缺少 `daily_goal_minutes` 欄位（各以 `ALTER TABLE ADD COLUMN` 冪等新增）
+
+```js
+const userCols2 = db.pragma('table_info(users)').map(c => c.name);
+if (!userCols2.includes('daily_goal_minutes'))
+  db.exec('ALTER TABLE users ADD COLUMN daily_goal_minutes INTEGER NOT NULL DEFAULT 0');
+if (!userCols2.includes('weekly_goal_minutes'))
+  db.exec('ALTER TABLE users ADD COLUMN weekly_goal_minutes INTEGER NOT NULL DEFAULT 0');
+```
+
+> 目標以分鐘儲存，`0` 代表未設定。讀書分析端點（`/studylog/summary`、`/heatmap`、`/monthly`、`/streak`、`/dashboard-stats`）為唯讀彙整查詢；連續天數與間隔複習日期分別由純函式 `utils/streak.js`、`utils/srs.js` 計算（有 `node:test` 測試覆蓋）。
+
 ---
 
-*本文件反映截至 2026-06-04 的實作狀態（v3.4）。*
+*本文件反映截至 2026-07-08 的實作狀態（v3.5）。*
