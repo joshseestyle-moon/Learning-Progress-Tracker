@@ -26,7 +26,7 @@ router.get('/', userCtx, (req, res) => {
   const school_year = req.query.school_year !== undefined ? +req.query.school_year : def.year;
   const semester    = req.query.semester    !== undefined ? +req.query.semester    : def.semester;
   const slots = db.prepare(`
-    SELECT t.*, s.name AS subject_name, s.color AS subject_color
+    SELECT t.*, s.name AS subject_name, s.color AS subject_color, s.category AS subject_category
     FROM timetable_slots t
     JOIN subjects s ON s.id = t.subject_id
     WHERE t.user_id = ? AND t.school_year = ? AND t.semester = ?

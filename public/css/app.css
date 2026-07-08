@@ -143,6 +143,12 @@ body { background: var(--bg); color: var(--text); }
   font-size: .72rem; font-weight: 600; color: #fff;
   margin-bottom: 2px; cursor: pointer;
 }
+/* 非考科：降透明度 + 斜紋，亮暗主題皆可辨（疊在科目底色上） */
+.tt-slot.slot-nonexam {
+  opacity: .6;
+  background-image: repeating-linear-gradient(
+    45deg, rgba(255,255,255,.28) 0 4px, transparent 4px 9px);
+}
 
 /* ── Calendar ── */
 .cal-header {

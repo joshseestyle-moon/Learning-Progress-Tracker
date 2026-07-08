@@ -319,6 +319,27 @@ function openAndMigrate() {
     db.exec('ALTER TABLE users ADD COLUMN weekly_goal_minutes INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Migration 19: subject category (考科 exam / 非考科 non_exam)
+  const subCols19 = db.pragma('table_info(subjects)').map(c => c.name);
+  if (!subCols19.includes('category')) {
+    db.exec("ALTER TABLE subjects ADD COLUMN category TEXT NOT NULL DEFAULT 'exam'");
+  }
+
+  // Migration 20: academic periods (上學期/寒假/下學期/暑假), user-defined date ranges per school year
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS periods (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      school_year INTEGER NOT NULL,
+      type        TEXT NOT NULL CHECK (type IN ('semester1','winter','semester2','summer')),
+      start_date  TEXT NOT NULL,
+      end_date    TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, school_year, type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_periods_user ON periods(user_id);
+  `);
+
   return db;
 }
 

@@ -48,7 +48,13 @@ function buildPage(subjects, chapters) {
               <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</span>
               <span class="text-xs text-muted" style="flex-shrink:0;">${t('sub.chapterCount', { n: (bySubject[s.id]||[]).length })}</span>
             </div>
-            <div style="display:flex;gap:.4rem;flex-shrink:0;margin-left:.5rem;">
+            <div style="display:flex;gap:.4rem;flex-shrink:0;margin-left:.5rem;align-items:center;">
+              <button class="sub-cat-btn" data-id="${s.id}" title="${t('sub.catToggleHint')}" style="
+                font-size:.72rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;cursor:pointer;
+                border:1px solid ${s.category === 'non_exam' ? 'var(--border)' : 'var(--accent)'};
+                color:${s.category === 'non_exam' ? 'var(--text3)' : 'var(--accent)'};
+                background:transparent;
+              ">${s.category === 'non_exam' ? t('enum.subjectCat.non_exam') : t('enum.subjectCat.exam')}</button>
               <button class="btn btn-ghost btn-sm sub-edit-btn" data-id="${s.id}">${t('btn.edit')}</button>
               <button class="btn btn-danger btn-sm sub-del-btn" data-id="${s.id}">✕</button>
             </div>
@@ -166,6 +172,15 @@ async function saveSubject(el, existing) {
 
 function attachEvents(el, subjects, chapters) {
   el.querySelector('#sub-add-btn').onclick = () => openSubjectModal(el, null, subjects, chapters);
+
+  el.querySelectorAll('.sub-cat-btn').forEach(btn => {
+    btn.onclick = async e => {
+      e.stopPropagation();
+      const s = subjects.find(x => x.id === +btn.dataset.id);
+      await put('/subjects/' + s.id, { category: s.category === 'non_exam' ? 'exam' : 'non_exam' });
+      await refresh(el);
+    };
+  });
 
   el.querySelectorAll('.sub-edit-btn').forEach(btn => {
     btn.onclick = e => {

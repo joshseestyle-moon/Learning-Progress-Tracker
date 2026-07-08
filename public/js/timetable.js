@@ -59,6 +59,7 @@ function buildPage() {
         <option value="2" ${currentSem === 2 ? 'selected' : ''}>${t('tt.sem2')}</option>
       </select>
       <span class="text-sm text-muted" style="margin-left:.25rem;">${t('tt.hint')}</span>
+      <span class="text-xs text-muted" style="margin-left:auto;">${t('tt.nonExamLegend')}</span>
     </div>
     <div style="overflow-x:auto;">
       <table style="border-collapse:collapse;width:100%;min-width:600px;background:var(--bg2);border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);">
@@ -83,7 +84,7 @@ function buildTbody() {
         const slot = slots.find(s => s.day_of_week === d && s.period === p);
         return `<td style="border-left:1px solid var(--border);border-bottom:1px solid var(--border);padding:.3rem;min-height:48px;cursor:pointer;transition:background .1s;"
           class="tt-cell" data-day="${d}" data-period="${p}" ${slot ? `data-slot-id="${slot.id}"` : ''}>
-          ${slot ? `<div class="tt-slot" style="background:${slot.subject_color};">${escHtml(slot.subject_name)}</div>` : ''}
+          ${slot ? `<div class="tt-slot${slot.subject_category === 'non_exam' ? ' slot-nonexam' : ''}" style="background:${slot.subject_color};">${slot.subject_category === 'non_exam' ? '◇ ' : ''}${escHtml(slot.subject_name)}</div>` : ''}
         </td>`;
       }).join('')}
     </tr>`).join('');
