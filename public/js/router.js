@@ -10,6 +10,7 @@ import { render as renderSubjects }  from './subjects.js';
 import { render as renderPrint }     from './print.js';
 import { render as renderBadges }    from './badges.js';
 import { render as renderShop }      from './shop.js';
+import { render as renderGoals }     from './goals.js';
 import { t } from './i18n.js';
 
 const routes = {
@@ -23,6 +24,7 @@ const routes = {
   grades:    { titleKey: 'nav.grades',    fn: renderGrades    },
   badges:    { titleKey: 'nav.badges',    fn: renderBadges    },
   shop:      { titleKey: 'nav.shop',      fn: renderShop      },
+  goals:     { titleKey: 'nav.goals',     fn: renderGoals     },
   subjects:  { titleKey: 'nav.subjects',  fn: renderSubjects  },
   print:     { titleKey: 'nav.print',     fn: renderPrint     },
 };

@@ -14,9 +14,9 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments;
+  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals;
   try {
-    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
@@ -24,6 +24,7 @@ export async function render(el) {
       get('/daily-tasks?date=' + todayStr),
       get('/studylog/dashboard-stats'),
       get('/assignments?upcoming=7'),
+      get('/goals'),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -76,6 +77,12 @@ export async function render(el) {
       <div class="card">
         <div class="card-title">${t('card.todayStudyTime')}</div>
         ${studyStatsCard(stats)}
+      </div>
+
+      <!-- Active goals -->
+      <div class="card">
+        <div class="card-title">${t('card.goals')}</div>
+        ${goalsCard(goals)}
       </div>
 
       <!-- Assignment deadlines -->
@@ -202,6 +209,39 @@ function studyStatsCard(stats) {
   return line(t('dash.studiedToday'), stats.today_minutes || 0, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
     + line(t('dash.thisWeek'), stats.week_minutes || 0, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
     + noGoal + streak;
+}
+
+function goalsCard(goals) {
+  if (!goals.length) {
+    return `<div class="text-muted text-sm">${t('dash.noGoals')}
+      <a style="color:var(--accent);cursor:pointer;" onclick="navigate('goals')">${t('dash.goToSetGoals')}</a></div>`;
+  }
+  const active = goals
+    .filter(g => !g.achieved)
+    .sort((a, b) => (a.window_to || '9999').localeCompare(b.window_to || '9999'))
+    .slice(0, 3);
+  if (!active.length) {
+    return `<div style="font-size:.85rem;color:var(--success);">${t('dash.allGoalsDone')}</div>`;
+  }
+  return active.map(g => {
+    const target = g.target || 0;
+    const raw = g.progress == null ? null : g.progress;
+    const pct = target > 0 && raw != null ? Math.min(100, Math.round(raw / target * 100)) : 0;
+    const isText = g.goal_type === 'text';
+    const label = isText ? t('goal.horizon.' + g.horizon)
+      : g.goal_type === 'grade'
+        ? (raw == null ? t('goal.noScoreYet') : `${raw} / ${target} ${t('goal.scoreUnit')}`)
+        : `${raw} / ${target}`;
+    return `
+    <div style="margin-bottom:.6rem;">
+      <div style="display:flex;justify-content:space-between;gap:.5rem;font-size:.8rem;margin-bottom:.25rem;">
+        <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${g.goal_type === 'chapter' ? '📖' : g.goal_type === 'grade' ? '🏆' : '✏️'} ${escHtml(g.title)}</span>
+        <span style="flex-shrink:0;color:var(--text2);">${label}</span>
+      </div>
+      ${isText ? '' : goalBar(raw || 0, target, 'var(--accent)')}
+    </div>`;
+  }).join('') + `<div style="text-align:right;"><a style="font-size:.75rem;color:var(--accent);cursor:pointer;" onclick="navigate('goals')">${t('dash.viewAllGoals')}</a></div>`;
 }
 
 function assignmentDueCard(items) {

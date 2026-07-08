@@ -340,6 +340,26 @@ function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS idx_periods_user ON periods(user_id);
   `);
 
+  // Migration 21: goals (chapter-progress / grade / free-text, short-mid-long horizon)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goals (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title        TEXT NOT NULL,
+      goal_type    TEXT NOT NULL CHECK (goal_type IN ('chapter','grade','text')),
+      horizon      TEXT NOT NULL DEFAULT 'short' CHECK (horizon IN ('short','mid','long')),
+      period_id    INTEGER REFERENCES periods(id) ON DELETE SET NULL,
+      subject_id   INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+      exam_type    TEXT,
+      target_value INTEGER,
+      due_date     TEXT,
+      is_done      INTEGER NOT NULL DEFAULT 0,
+      done_at      TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
+  `);
+
   return db;
 }
 

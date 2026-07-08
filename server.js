@@ -22,6 +22,7 @@ app.use('/api/badges',      require('./routes/badges'));
 app.use('/api/shop',        require('./routes/shop'));
 app.use('/api/daily-tasks', require('./routes/daily-tasks'));
 app.use('/api/periods',     require('./routes/periods'));
+app.use('/api/goals',       require('./routes/goals'));
 
 // Backup: checkpoint WAL first so the downloaded file is complete
 app.get('/api/backup', (req, res) => {
