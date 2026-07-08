@@ -1,0 +1,26 @@
+# X:\class — 學習管理系統（給接手的模型）
+
+先讀全域 `C:\Users\Josh\.claude\CLAUDE.md` 的不變量與路由表；本檔只放專案事實。
+
+## 專案不變量（違反即事故）
+1. 伺服器啟動/重啟一律用 `啟動.bat`，不要直接 `node server.js`。
+2. 測試一律用「測試用帳號」；絕不動真實帳號（如 炎朗）。`data\app.db` 是正式資料，孩子的真實學習紀錄在裡面。
+3. 動 migration 前先複製備份 `data\app.db`。migration 寫在 `db\db.js` `openAndMigrate()` 內，必須冪等（`pragma table_info` / `sqlite_master` guard）、編號接續（目前最新編號直接看該函式末尾）。驗證法：重啟伺服器兩次皆無錯。
+4. 新 UI 字串必須同步 `public\js\i18n.js` 內 zh-TW/en/ja 三個字典；完成後 Grep 新 key，命中數必須 = 3。
+5. SQLite 日期查詢一律加 `'localtime'`；點數/XP 類寫入包 better-sqlite3 transaction（仿 `routes\shop.js` 的 `redeemTx`）。
+6. 產品的最終使用者是學生（小孩）：UI 文案以繁中、鼓勵導向為預設；機制設計偏獎勵、不懲罰。
+
+## 架構速覽
+Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`public\app.html` 殼 + `public\js\*.js`（hash router，一頁一模組，template-literal HTML）。API 在 `routes\*.js`；純邏輯在 `utils\*.js`（node --test，測試在 `test\`，跑 `npm test`）。schema = `db\schema.sql` + `db\db.js` 內嵌 migrations。徽章邏輯在 `badges\checker.js` + `definitions.js`。已知重複點：`RARITY_PTS` 重複定義於 checker.js / badges.js / shop.js / db.js（改任一處要同步，或趁機收斂到 `utils\points.js`）。
+
+## 省 token 提示（本專案實測的坑）
+- `public\js\i18n.js` >1100 行：先 Grep 定位行號，再帶 offset/limit 讀，不要整檔讀。
+- `db\db.js`：看 migration 只讀檔案末段。
+- 系統全貌別自己掃：`SYSTEM_DOC.md` / `TECH_SPEC.md` 有現成文件，或派 Explore。
+
+## 進行中的工作
+- 工作分支：`dev-2026-07-08`（所有異動在此分支，勿直接動 main）。
+- 飛輪升級計畫（wishlist.md 七項目標，已規劃完成、使用者尚未批准實作）：`docs\plan-flywheel.md`。實作前依全域不變量第 1 條先確認。
+
+## 教訓紀錄
+（格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）
