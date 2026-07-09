@@ -39,4 +39,18 @@ function computeCurrentStreak(dates, todayStr) {
   return count;
 }
 
-module.exports = { computeMaxStreak, computeCurrentStreak };
+// Combo: consecutive days (ending today, with the same yesterday-grace as
+// computeCurrentStreak) where study minutes met the daily goal.
+// minutesByDate: { 'YYYY-MM-DD': totalMinutes }. goal <= 0 means no goal set → combo 0.
+function computeComboDays(minutesByDate, goal, todayStr) {
+  if (!goal || goal <= 0) return 0;
+  const qualifying = Object.keys(minutesByDate).filter(d => minutesByDate[d] >= goal);
+  return computeCurrentStreak(qualifying, todayStr);
+}
+
+// +10% per combo day, capped at ×2.0 (10 days).
+function comboMultiplier(days) {
+  return 1 + 0.1 * Math.min(Math.max(0, days), 10);
+}
+
+module.exports = { computeMaxStreak, computeCurrentStreak, computeComboDays, comboMultiplier };

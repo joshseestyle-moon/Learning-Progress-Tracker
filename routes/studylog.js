@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { checkBadges } = require('../badges/checker');
+const { processActivity } = require('../utils/gamify');
 const { computeCurrentStreak } = require('../utils/streak');
 const { clampText, LIMITS } = require('../utils/validate');
 
@@ -119,8 +119,10 @@ router.post('/', userCtx, (req, res) => {
   const result = db.prepare(
     'INSERT INTO study_log (user_id,subject_id,log_date,minutes,note,chapter_id) VALUES (?,?,?,?,?,?)'
   ).run(req.userId, subject_id, log_date, minutes, note || null, chapter_id || null);
-  const newBadges = checkBadges(req.userId);
-  res.status(201).json({ id: result.lastInsertRowid, newBadges });
+  const gamify = processActivity(req.userId, {
+    type: 'study', id: result.lastInsertRowid, logDate: log_date, minutes: Number(minutes) || 0,
+  });
+  res.status(201).json({ id: result.lastInsertRowid, ...gamify });
 });
 
 router.delete('/:id', userCtx, (req, res) => {

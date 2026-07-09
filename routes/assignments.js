@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { checkBadges } = require('../badges/checker');
+const { processActivity } = require('../utils/gamify');
 const { clampText, LIMITS } = require('../utils/validate');
 
 router.get('/', userCtx, (req, res) => {
@@ -50,8 +50,8 @@ router.put('/:id', userCtx, (req, res) => {
       finalDone,
       req.params.id
     );
-  const newBadges = (finalDone && !a.is_done) ? checkBadges(req.userId) : [];
-  res.json({ ok: true, newBadges });
+  const gamify = (finalDone && !a.is_done) ? processActivity(req.userId, { type: 'assignment', id: a.id }) : { newBadges: [] };
+  res.json({ ok: true, ...gamify });
 });
 
 router.delete('/:id', userCtx, (req, res) => {

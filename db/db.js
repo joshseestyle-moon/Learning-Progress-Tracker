@@ -360,6 +360,49 @@ function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
   `);
 
+  // Migration 22: xp_log — permanent growth XP, separate from spendable point_log.
+  // One-time backfill (guarded by table existence): historical study minutes at
+  // 1 XP/min capped 180/day, and completed chapter sessions at 15 XP each.
+  const hasXpLog22 = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='xp_log'").get();
+  if (!hasXpLog22) {
+    db.exec(`
+      CREATE TABLE xp_log (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        delta      INTEGER NOT NULL,
+        reason     TEXT    NOT NULL,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_xp_log_user ON xp_log(user_id);
+    `);
+    const insertXp22 = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
+    const studyXp22 = db.prepare(`
+      SELECT user_id, SUM(MIN(day_min, 180)) AS xp FROM (
+        SELECT user_id, log_date, SUM(minutes) AS day_min FROM study_log GROUP BY user_id, log_date
+      ) GROUP BY user_id
+    `).all();
+    for (const r of studyXp22) if (r.xp > 0) insertXp22.run(r.user_id, r.xp, 'backfill:study');
+    const chapXp22 = db.prepare(
+      'SELECT user_id, COUNT(*) AS c FROM chapter_progress WHERE is_done = 1 GROUP BY user_id'
+    ).all();
+    for (const r of chapXp22) if (r.c > 0) insertXp22.run(r.user_id, r.c * 15, 'backfill:chapters');
+  }
+
+  // Migration 23: daily surprise reward log — UNIQUE(user_id, reward_date) is the
+  // once-per-day guarantee (INSERT OR IGNORE, changes===1 wins the surprise).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_reward_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reward_date TEXT    NOT NULL,
+      tier        INTEGER NOT NULL,
+      points      INTEGER NOT NULL,
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, reward_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_reward_user ON daily_reward_log(user_id);
+  `);
+
   return db;
 }
 

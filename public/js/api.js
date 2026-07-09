@@ -22,6 +22,9 @@ export async function api(path, options = {}) {
   if (data.newBadges && data.newBadges.length > 0) {
     window.dispatchEvent(new CustomEvent('badge-earned', { detail: data.newBadges }));
   }
+  if ((data.xp && data.xp.gained > 0) || data.surprise || (data.goalsAchieved && data.goalsAchieved.length > 0)) {
+    window.dispatchEvent(new CustomEvent('gamify-result', { detail: data }));
+  }
   return data;
 }
 

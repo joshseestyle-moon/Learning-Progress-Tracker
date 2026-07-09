@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { checkBadges } = require('../badges/checker');
+const { processActivity } = require('../utils/gamify');
 const { nextReviewDate } = require('../utils/srs');
 const { clampText, LIMITS } = require('../utils/validate');
 
@@ -98,8 +98,8 @@ router.patch('/progress/:progressId', userCtx, (req, res) => {
     );
   const becameDone = newDone && !existing.is_done;
   const nextReview = maybeScheduleNextReview(req.userId, existing, becameDone, req.body.auto_schedule === false);
-  const newBadges = becameDone ? checkBadges(req.userId) : [];
-  res.json({ ok: true, is_done: newDone, newBadges, nextReview });
+  const gamify = becameDone ? processActivity(req.userId, { type: 'chapter', progressId: existing.id }) : { newBadges: [] };
+  res.json({ ok: true, is_done: newDone, ...gamify, nextReview });
 });
 
 // DELETE /progress/:progressId — delete a review session (preview cannot be deleted)
@@ -177,19 +177,19 @@ router.patch('/:id/progress', userCtx, (req, res) => {
       .run(newDone, newDone && !existing.done_at ? new Date().toISOString() : (newDone ? existing.done_at : null), newDate, newNotes, existing.id);
     const becameDone = newDone && !existing.is_done;
     const nextReview = maybeScheduleNextReview(req.userId, existing, becameDone, req.body.auto_schedule === false);
-    const newBadges = becameDone ? checkBadges(req.userId) : [];
-    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes, newBadges, nextReview });
+    const gamify = becameDone ? processActivity(req.userId, { type: 'chapter', progressId: existing.id }) : { newBadges: [] };
+    res.json({ is_done: newDone, scheduled_date: newDate, notes: newNotes, ...gamify, nextReview });
   } else {
     const isDone   = toggle_done ? 1 : 0;
     const newNotes = notes !== undefined ? (notes.trim() || null) : null;
-    db.prepare(
+    const inserted = db.prepare(
       'INSERT INTO chapter_progress (user_id,chapter_id,type,seq,scheduled_date,is_done,done_at,notes) VALUES (?,?,?,1,?,?,?,?)'
     ).run(req.userId, req.params.id, type, scheduled_date || null, isDone, isDone ? new Date().toISOString() : null, newNotes);
     const nextReview = maybeScheduleNextReview(
       req.userId, { chapter_id: +req.params.id, type, seq: 1 }, isDone === 1, req.body.auto_schedule === false
     );
-    const newBadges = isDone ? checkBadges(req.userId) : [];
-    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, notes: newNotes, newBadges, nextReview });
+    const gamify = isDone ? processActivity(req.userId, { type: 'chapter', progressId: inserted.lastInsertRowid }) : { newBadges: [] };
+    res.json({ is_done: isDone, scheduled_date: scheduled_date || null, ...gamify, nextReview });
   }
 });
 

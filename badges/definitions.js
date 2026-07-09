@@ -20,6 +20,10 @@ module.exports = [
   { id: 'hw_streak_3',   category: '完成',  icon: '📌', name: '作業達人',   desc: '連續3天完成所有作業',            rarity: 'uncommon' },
   { id: 'hw_streak_7',   category: '完成',  icon: '🥇', name: '作業之星',   desc: '連續7天完成所有作業',            rarity: 'rare'     },
   { id: 'hw_days_10',    category: '完成',  icon: '🎖️', name: '毅力勇者',   desc: '累積10天完成所有作業',           rarity: 'uncommon' },
+  // ── 等級/連續達標類 ──
+  { id: 'level_5',          category: '努力',  icon: '⭐', name: '嶄露頭角',   desc: '等級達到 5 級',                rarity: 'uncommon' },
+  { id: 'level_10',         category: '努力',  icon: '🌠', name: '扶搖直上',   desc: '等級達到 10 級',               rarity: 'rare'     },
+  { id: 'combo_7',          category: '習慣',  icon: '⚡', name: '火力全開',   desc: '連續7天達成每日讀書目標',      rarity: 'rare'     },
   // ── 成績類 ──
   { id: 'first_grade',      category: '成績',  icon: '📝', name: '首次出征',   desc: '第一次記錄成績',               rarity: 'common'   },
   { id: 'perfect_score',    category: '成績',  icon: '💯', name: '完美主義',   desc: '某次考試達滿分',               rarity: 'epic'     },

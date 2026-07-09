@@ -14,9 +14,9 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals;
+  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify;
   try {
-    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
@@ -25,6 +25,7 @@ export async function render(el) {
       get('/studylog/dashboard-stats'),
       get('/assignments?upcoming=7'),
       get('/goals'),
+      get('/gamify/status'),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -77,6 +78,12 @@ export async function render(el) {
       <div class="card">
         <div class="card-title">${t('card.todayStudyTime')}</div>
         ${studyStatsCard(stats)}
+      </div>
+
+      <!-- Level / XP / combo -->
+      <div class="card">
+        <div class="card-title">${t('card.level')}</div>
+        ${levelCard(gamify)}
       </div>
 
       <!-- Active goals -->
@@ -209,6 +216,31 @@ function studyStatsCard(stats) {
   return line(t('dash.studiedToday'), stats.today_minutes || 0, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
     + line(t('dash.thisWeek'), stats.week_minutes || 0, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
     + noGoal + streak;
+}
+
+function levelCard(s) {
+  const span = s.into_level + s.to_next;
+  const pct = span > 0 ? Math.min(100, Math.round(s.into_level / span * 100)) : 100;
+  const nextLine = s.to_next > 0
+    ? `<span class="text-xs text-muted">${t('xp.toNext', { n: s.to_next })}</span>`
+    : `<span class="text-xs" style="color:var(--success);font-weight:700;">${t('xp.maxLevel')}</span>`;
+  const combo = s.combo_days > 0
+    ? `<div style="font-size:.9rem;font-weight:700;color:#f97316;margin-top:.5rem;">${t('combo.days', { n: s.combo_days })}
+         <span style="font-weight:400;color:var(--text2);font-size:.78rem;">${t('combo.bonus', { m: s.combo_multiplier.toFixed(1) })}</span></div>`
+    : '';
+  return `
+    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">
+      <span style="font-size:1.8rem;">⭐</span>
+      <div>
+        <div style="font-weight:800;font-size:1.05rem;">Lv.${s.level} ${t(s.title_key)}</div>
+        <div class="text-xs text-muted">${t('xp.totalLabel', { n: s.total_xp })}</div>
+      </div>
+    </div>
+    <div style="height:8px;border-radius:4px;background:var(--bg3,rgba(128,128,128,.2));overflow:hidden;margin-bottom:.3rem;">
+      <div style="width:${pct}%;height:100%;border-radius:4px;background:#fbbf24;"></div>
+    </div>
+    ${nextLine}
+    ${combo}`;
 }
 
 function goalsCard(goals) {

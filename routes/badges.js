@@ -2,10 +2,8 @@ const router  = require('express').Router();
 const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
-const { getBalance } = require('../utils/points');
+const { getBalance, RARITY_PTS } = require('../utils/points');
 const { clampText, LIMITS } = require('../utils/validate');
-
-const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const VALID_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
 
 // ── System badges ──────────────────────────────────────────────

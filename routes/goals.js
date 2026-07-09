@@ -3,45 +3,15 @@ const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { clampText, LIMITS } = require('../utils/validate');
 const { goalWindow, computeProgress } = require('../utils/goalProgress');
+// Metrics inside the goal window. Achievement transitions (is_done + XP) are
+// owned by processActivity (utils/gamify.js); GET only computes, never writes.
+const { metricsFor } = require('../utils/goalMetrics');
+const { processActivity } = require('../utils/gamify');
 
 const TYPES = ['chapter', 'grade', 'text'];
 const HORIZONS = ['short', 'mid', 'long'];
 const EXAM_TYPES = ['quiz', 'segment', 'midterm', 'final', 'mock'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// Metrics inside the goal window. Achievement transitions (is_done + XP) are
-// owned by Phase 3's processActivity; GET only computes, never writes.
-function metricsFor(userId, goal, window) {
-  if (goal.goal_type === 'chapter') {
-    const row = db.prepare(`
-      SELECT COUNT(*) AS n
-      FROM chapter_progress cp
-      JOIN chapters c ON c.id = cp.chapter_id
-      WHERE cp.user_id = ? AND cp.is_done = 1 AND cp.done_at IS NOT NULL
-        AND (? IS NULL OR date(cp.done_at) >= date(?))
-        AND (? IS NULL OR date(cp.done_at) <= date(?))
-        AND (? IS NULL OR c.subject_id = ?)
-    `).get(userId, window.from, window.from, window.to, window.to, goal.subject_id, goal.subject_id);
-    return { chapterDoneCount: row.n };
-  }
-  if (goal.goal_type === 'grade') {
-    // exam_type lives on exams; manually-entered grades (exam_id NULL) can only
-    // match when the goal doesn't restrict exam_type.
-    const row = db.prepare(`
-      SELECT MAX(g.score) AS s
-      FROM grades g
-      LEFT JOIN exams e ON e.id = g.exam_id
-      WHERE g.user_id = ? AND g.subject_id = ?
-        AND (? IS NULL OR e.exam_type = ?)
-        AND (? IS NULL OR date(g.exam_date) >= date(?))
-        AND (? IS NULL OR date(g.exam_date) <= date(?))
-    `).get(userId, goal.subject_id,
-      goal.exam_type, goal.exam_type,
-      window.from, window.from, window.to, window.to);
-    return { bestScore: row.s };
-  }
-  return {};
-}
 
 router.get('/', userCtx, (req, res) => {
   const goals = db.prepare(`
@@ -147,7 +117,9 @@ router.patch('/:id/toggle', userCtx, (req, res) => {
   const newDone = g.is_done ? 0 : 1;
   db.prepare('UPDATE goals SET is_done = ?, done_at = ? WHERE id = ?')
     .run(newDone, newDone ? new Date().toISOString() : null, g.id);
-  res.json({ ok: true, is_done: newDone });
+  // Completing a text goal earns horizon XP too (grantOnce — re-toggling never double-grants)
+  const gamify = newDone ? processActivity(req.userId, { type: 'goal', goalId: g.id }) : { newBadges: [] };
+  res.json({ ok: true, is_done: newDone, ...gamify });
 });
 
 router.delete('/:id', userCtx, (req, res) => {

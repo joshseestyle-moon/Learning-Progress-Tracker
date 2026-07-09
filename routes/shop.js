@@ -2,10 +2,8 @@ const router  = require('express').Router();
 const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
-const { getBalance } = require('../utils/points');
+const { getBalance, RARITY_PTS } = require('../utils/points');
 const { clampText, LIMITS } = require('../utils/validate');
-
-const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
 const _badgeMap  = new Map(BADGES.map(b => [b.id, { name: b.name, icon: b.icon }]));
 
 router.get('/points', userCtx, (req, res) => {
@@ -70,11 +68,15 @@ router.get('/history', userCtx, (req, res) => {
       CASE
         WHEN pl.reason LIKE 'exchange:%' THEN COALESCE(bel.badge_name, pl.reason)
         WHEN pl.reason LIKE 'redeem:%'   THEN COALESCE(ri.name, rl.item_name, '(已刪除獎勵)')
+        WHEN pl.reason LIKE 'surprise:%' THEN '每日驚喜'
+        WHEN pl.reason LIKE 'quest:%'    THEN '挑戰獎勵'
         ELSE pl.reason
       END AS display_name,
       CASE
         WHEN pl.reason LIKE 'exchange:%' THEN COALESCE(bel.badge_icon, '🏅')
         WHEN pl.reason LIKE 'redeem:%'   THEN '🛍️'
+        WHEN pl.reason LIKE 'surprise:%' THEN '🎁'
+        WHEN pl.reason LIKE 'quest:%'    THEN '🏆'
         ELSE '📝'
       END AS display_icon
     FROM point_log pl

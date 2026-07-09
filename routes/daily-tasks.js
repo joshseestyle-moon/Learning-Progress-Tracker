@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { checkBadges } = require('../badges/checker');
+const { processActivity } = require('../utils/gamify');
 const { clampText, LIMITS } = require('../utils/validate');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -94,8 +94,11 @@ router.patch('/parts/:partId', userCtx, (req, res) => {
     db.prepare('UPDATE daily_tasks SET is_done = ? WHERE id = ?').run(allDone, part.task_id);
   })();
 
-  const newBadges = allDone ? checkBadges(req.userId) : [];
-  res.json({ ok: true, task_done: !!allDone, newBadges });
+  // part.is_done is the pre-update state — only a 0→1 transition earns part XP
+  const gamify = is_done
+    ? processActivity(req.userId, { type: 'task', taskId: part.task_id, partNums: part.is_done ? [] : [part.part_num], taskDone: !!allDone })
+    : { newBadges: [] };
+  res.json({ ok: true, task_done: !!allDone, ...gamify });
 });
 
 // Toggle whole task — sets all parts to the same state
@@ -107,8 +110,14 @@ router.patch('/:id', userCtx, (req, res) => {
     db.prepare('UPDATE daily_tasks SET is_done = ? WHERE id = ?').run(is_done, req.params.id);
     db.prepare('UPDATE daily_task_parts SET is_done = ? WHERE task_id = ?').run(is_done, req.params.id);
   })();
-  const newBadges = is_done ? checkBadges(req.userId) : [];
-  res.json({ ok: true, newBadges });
+  const gamify = is_done
+    ? processActivity(req.userId, {
+        type: 'task', taskId: +req.params.id,
+        partNums: db.prepare('SELECT part_num FROM daily_task_parts WHERE task_id = ?').all(req.params.id).map(r => r.part_num),
+        taskDone: true,
+      })
+    : { newBadges: [] };
+  res.json({ ok: true, ...gamify });
 });
 
 router.delete('/:id', userCtx, (req, res) => {

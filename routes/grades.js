@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { checkBadges } = require('../badges/checker');
+const { processActivity } = require('../utils/gamify');
 const { clampText, LIMITS } = require('../utils/validate');
 
 router.get('/', userCtx, (req, res) => {
@@ -26,8 +26,8 @@ router.post('/', userCtx, (req, res) => {
   const result = db.prepare(
     'INSERT INTO grades (user_id,subject_id,exam_id,exam_name,exam_date,score,max_score,notes,class_rank) VALUES (?,?,?,?,?,?,?,?,?)'
   ).run(req.userId, subject_id, exam_id || null, exam_name, exam_date, score, max_score, notes || null, class_rank || null);
-  const newBadges = checkBadges(req.userId);
-  res.status(201).json({ id: result.lastInsertRowid, newBadges });
+  const gamify = processActivity(req.userId, { type: 'grade', id: result.lastInsertRowid });
+  res.status(201).json({ id: result.lastInsertRowid, ...gamify });
 });
 
 router.put('/:id', userCtx, (req, res) => {

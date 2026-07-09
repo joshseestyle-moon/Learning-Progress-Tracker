@@ -1,8 +1,8 @@
 const db     = require('../db/db');
 const BADGES = require('./definitions');
-const { computeMaxStreak } = require('../utils/streak');
-
-const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
+const { computeMaxStreak, computeComboDays } = require('../utils/streak');
+const { levelForXp } = require('../utils/xp');
+const { RARITY_PTS } = require('../utils/points');
 
 function checkBadges(userId) {
   const earned = new Set(
@@ -88,6 +88,21 @@ function checkBadges(userId) {
   const hwStreak = computeMaxStreak(hwDoneDates);
   if (hwStreak >= 3) award('hw_streak_3');
   if (hwStreak >= 7) award('hw_streak_7');
+
+  // ── 等級/連續達標類 ──
+  const totalXp = db.prepare('SELECT COALESCE(SUM(delta),0) AS x FROM xp_log WHERE user_id = ?').get(userId).x;
+  const level = levelForXp(totalXp).level;
+  if (level >= 5)  award('level_5');
+  if (level >= 10) award('level_10');
+
+  const dailyGoal = db.prepare('SELECT daily_goal_minutes FROM users WHERE id = ?').get(userId);
+  if (dailyGoal && dailyGoal.daily_goal_minutes > 0) {
+    const minutesByDate = {};
+    for (const r of db.prepare('SELECT log_date, SUM(minutes) AS m FROM study_log WHERE user_id = ? GROUP BY log_date').all(userId)) {
+      minutesByDate[r.log_date] = r.m;
+    }
+    if (computeComboDays(minutesByDate, dailyGoal.daily_goal_minutes, today) >= 7) award('combo_7');
+  }
 
   // ── 成績類 ──
   const gradeCount = db.prepare('SELECT COUNT(*) AS c FROM grades WHERE user_id = ?').get(userId).c;
