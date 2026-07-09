@@ -17,14 +17,9 @@
 const db = require('../db/db');
 const { checkBadges } = require('../badges/checker');
 const { XP_RULES, levelForXp, rollSurpriseTier } = require('./xp');
-const { computeComboDays, comboMultiplier } = require('./streak');
+const { computeComboDays, comboMultiplier, localToday } = require('./streak');
 const { goalWindow, computeProgress } = require('./goalProgress');
 const { metricsFor } = require('./goalMetrics');
-
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function totalXpOf(userId) {
   return db.prepare('SELECT COALESCE(SUM(delta),0) AS x FROM xp_log WHERE user_id = ?').get(userId).x;
@@ -117,8 +112,8 @@ function processActivity(userId, event) {
 
     // 4. Catch-up quest progress — chapter/task completions may clear snapshot items
     if (event.type === 'chapter' || event.type === 'task') {
-      const quest = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
-      if (quest && quest.deadline_date >= today && questProgress(quest) >= quest.target_count) {
+      const quest = getActiveQuest(userId, today);
+      if (quest && questProgress(quest) >= quest.target_count) {
         db.prepare("UPDATE catchup_quests SET status = 'completed', completed_at = ? WHERE id = ?")
           .run(new Date().toISOString(), quest.id);
         // bonus points are flat (combo multiplier only applies to XP and surprise)
@@ -137,7 +132,12 @@ function processActivity(userId, event) {
   });
   tx();
 
-  const newBadges = checkBadges(userId);
+  // Badge checks run full-table scans — skip them for no-op events (e.g. a part
+  // toggled that granted nothing and completed nothing), matching the old
+  // per-route behavior of checking only on completions.
+  const badgeRelevant = gained > 0 || !!surprise || goalsAchieved.length > 0 || !!questCompleted
+    || event.type !== 'task' || !!event.taskDone;
+  const newBadges = badgeRelevant ? checkBadges(userId) : [];
 
   const total = xpBefore + gained;
   const before = levelForXp(xpBefore);
@@ -158,6 +158,18 @@ function processActivity(userId, event) {
     questCompleted,
     goalsAchieved,
   };
+}
+
+// Single source of truth for the active quest: returns it if still inside the
+// deadline, otherwise lazily flips it to 'expired' (no penalty) and returns null.
+function getActiveQuest(userId, todayStr) {
+  const q = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
+  if (!q) return null;
+  if (q.deadline_date < todayStr) {
+    db.prepare("UPDATE catchup_quests SET status = 'expired' WHERE id = ?").run(q.id);
+    return null;
+  }
+  return q;
 }
 
 // Completed count among a quest's snapshot items (shared with routes/catchup.js).
@@ -181,7 +193,7 @@ function getStatus(userId) {
   const surpriseToday = db.prepare(
     'SELECT tier, points FROM daily_reward_log WHERE user_id = ? AND reward_date = ?'
   ).get(userId, today) || null;
-  const quest = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
+  const quest = getActiveQuest(userId, today);
   return {
     total_xp: total,
     level: lv.level,
@@ -192,9 +204,8 @@ function getStatus(userId) {
     combo_multiplier: combo.multiplier,
     daily_goal: combo.dailyGoal,
     surprise_today: surpriseToday,
-    active_quest: quest && quest.deadline_date >= today
-      ? { ...quest, done_count: questProgress(quest) } : null,
+    active_quest: quest ? { ...quest, done_count: questProgress(quest) } : null,
   };
 }
 
-module.exports = { processActivity, getStatus, localToday, questProgress };
+module.exports = { processActivity, getStatus, localToday, questProgress, getActiveQuest };

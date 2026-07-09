@@ -1,6 +1,6 @@
 const db     = require('../db/db');
 const BADGES = require('./definitions');
-const { computeMaxStreak, computeComboDays } = require('../utils/streak');
+const { computeMaxStreak, computeComboDays, localToday } = require('../utils/streak');
 const { levelForXp } = require('../utils/xp');
 const { RARITY_PTS } = require('../utils/points');
 
@@ -11,8 +11,7 @@ function checkBadges(userId) {
 
   const newlyEarned = [];
 
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const today = localToday();
 
   // Fetch all badges already exchanged today in one query instead of one-per-badge
   const exchangedTodaySet = new Set(

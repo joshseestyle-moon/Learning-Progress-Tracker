@@ -53,4 +53,8 @@ function comboMultiplier(days) {
   return 1 + 0.1 * Math.min(Math.max(0, days), 10);
 }
 
-module.exports = { computeMaxStreak, computeCurrentStreak, computeComboDays, comboMultiplier };
+// Shared local-date helpers ('YYYY-MM-DD' in the machine's timezone) — the
+// single source for "today" across gamify/checker/routes.
+function localToday() { return _key(new Date()); }
+
+module.exports = { computeMaxStreak, computeCurrentStreak, computeComboDays, comboMultiplier, dateKey: _key, localToday };

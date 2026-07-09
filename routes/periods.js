@@ -15,7 +15,7 @@ function summarize(userId, from, to) {
   const chapters = db.prepare(`
     SELECT COUNT(*) AS n FROM chapter_progress
     WHERE user_id = ? AND is_done = 1 AND done_at IS NOT NULL
-      AND date(done_at) BETWEEN date(?) AND date(?)
+      AND date(done_at,'localtime') BETWEEN date(?) AND date(?)
   `).get(userId, from, to);
   const tasks = db.prepare(`
     SELECT COUNT(*) AS n FROM daily_tasks

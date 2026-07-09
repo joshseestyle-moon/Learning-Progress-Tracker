@@ -38,6 +38,8 @@ const TRANSLATIONS = {
     'catchup.questStarted': '挑戰開始！完成 {target} 項就能領獎勵',
     'catchup.questDoneToast': '挑戰完成！',
     'catchup.questReward': '+{p} 點、+{x} XP',
+    'shop.rowSurprise':    '每日驚喜',
+    'shop.rowQuest':       '挑戰獎勵',
     // ── Growth page（成長軌跡）────────────────────────────────────
     'nav.growth':          '成長軌跡',
     'growth.cumulative':   '累積成長',
@@ -535,6 +537,8 @@ const TRANSLATIONS = {
     'catchup.questStarted': 'Quest started! Clear {target} items for a reward',
     'catchup.questDoneToast': 'Quest complete!',
     'catchup.questReward': '+{p} pts, +{x} XP',
+    'shop.rowSurprise':    'Daily surprise',
+    'shop.rowQuest':       'Quest reward',
     // ── Growth page ────────────────────────────────────────────────
     'nav.growth':          'Growth',
     'growth.cumulative':   'Cumulative growth',
@@ -1009,6 +1013,8 @@ const TRANSLATIONS = {
     'catchup.questStarted': 'チャレンジ開始！{target} 件クリアでごほうび',
     'catchup.questDoneToast': 'チャレンジ達成！',
     'catchup.questReward': '+{p} ポイント、+{x} XP',
+    'shop.rowSurprise':    'デイリーサプライズ',
+    'shop.rowQuest':       'チャレンジ報酬',
     // ── Growth page（成長のあゆみ）─────────────────────────────────
     'nav.growth':          '成長のあゆみ',
     'growth.cumulative':   '累計成長',

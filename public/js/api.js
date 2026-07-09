@@ -58,8 +58,12 @@ export function fmtDate(d) {
   return dt.toLocaleDateString(LOCALE_MAP[lang] || 'en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
+// Local calendar date — must NOT use toISOString() (UTC): between midnight and
+// 08:00 Asia/Taipei that would be yesterday, disagreeing with the server's
+// 'localtime' SQLite queries.
 export function today() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function daysLeft(dateStr) {

@@ -169,6 +169,9 @@ function renderHistory() {
     const dateStr = fmtDate(r.created_at.slice(0, 10));
     const timeStr = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     const isPos = r.delta >= 0;
+    // Gamification rows are named client-side so they follow the UI language
+    if (r.reason && r.reason.startsWith('surprise:')) r.display_name = t('shop.rowSurprise');
+    else if (r.reason && r.reason.startsWith('quest:')) r.display_name = t('shop.rowQuest');
     rows.push(`
       <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;border-bottom:1px solid var(--border)">
         <span style="font-size:1.2rem;flex-shrink:0">${r.display_icon}</span>

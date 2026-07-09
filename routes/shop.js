@@ -68,8 +68,6 @@ router.get('/history', userCtx, (req, res) => {
       CASE
         WHEN pl.reason LIKE 'exchange:%' THEN COALESCE(bel.badge_name, pl.reason)
         WHEN pl.reason LIKE 'redeem:%'   THEN COALESCE(ri.name, rl.item_name, '(已刪除獎勵)')
-        WHEN pl.reason LIKE 'surprise:%' THEN '每日驚喜'
-        WHEN pl.reason LIKE 'quest:%'    THEN '挑戰獎勵'
         ELSE pl.reason
       END AS display_name,
       CASE

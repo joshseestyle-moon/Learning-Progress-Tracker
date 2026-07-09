@@ -2,7 +2,7 @@ const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const { planCatchup, addDays } = require('../utils/catchup');
-const { localToday, questProgress } = require('../utils/gamify');
+const { localToday, questProgress, getActiveQuest } = require('../utils/gamify');
 
 const QUEST_BONUS_POINTS = 30;
 const QUEST_BONUS_XP = 50;
@@ -22,16 +22,11 @@ function overdueChapters(userId, today) {
   `).all(userId, today);
 }
 
-// Lazily expire a stale quest; returns the active quest (with progress) or null.
+// Active quest with progress attached; expiry itself lives in utils/gamify.js
+// getActiveQuest so every reader shares one source of truth.
 function activeQuest(userId, today) {
-  const q = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
-  if (!q) return null;
-  if (q.deadline_date < today) {
-    // expired — no penalty, just close it out
-    db.prepare("UPDATE catchup_quests SET status = 'expired' WHERE id = ?").run(q.id);
-    return null;
-  }
-  return { ...q, done_count: questProgress(q) };
+  const q = getActiveQuest(userId, today);
+  return q ? { ...q, done_count: questProgress(q) } : null;
 }
 
 // GET /api/catchup/status — overdue picture + active quest

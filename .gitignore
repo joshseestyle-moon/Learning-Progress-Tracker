@@ -6,6 +6,9 @@ data/*.db-wal
 *.db-shm
 *.db-wal
 
+# 備份檔（制度檔與 DB 的 .bak-YYYYMMDD，絕不入版控）
+*.bak-*
+
 # 相依套件
 node_modules/
 

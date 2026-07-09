@@ -10,8 +10,8 @@ function metricsFor(userId, goal, window) {
       FROM chapter_progress cp
       JOIN chapters c ON c.id = cp.chapter_id
       WHERE cp.user_id = ? AND cp.is_done = 1 AND cp.done_at IS NOT NULL
-        AND (? IS NULL OR date(cp.done_at) >= date(?))
-        AND (? IS NULL OR date(cp.done_at) <= date(?))
+        AND (? IS NULL OR date(cp.done_at,'localtime') >= date(?))
+        AND (? IS NULL OR date(cp.done_at,'localtime') <= date(?))
         AND (? IS NULL OR c.subject_id = ?)
     `).get(userId, window.from, window.from, window.to, window.to, goal.subject_id, goal.subject_id);
     return { chapterDoneCount: row.n };
