@@ -365,27 +365,32 @@ function openAndMigrate() {
   // 1 XP/min capped 180/day, and completed chapter sessions at 15 XP each.
   const hasXpLog22 = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='xp_log'").get();
   if (!hasXpLog22) {
-    db.exec(`
-      CREATE TABLE xp_log (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        delta      INTEGER NOT NULL,
-        reason     TEXT    NOT NULL,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX idx_xp_log_user ON xp_log(user_id);
-    `);
-    const insertXp22 = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
-    const studyXp22 = db.prepare(`
-      SELECT user_id, SUM(MIN(day_min, 180)) AS xp FROM (
-        SELECT user_id, log_date, SUM(minutes) AS day_min FROM study_log GROUP BY user_id, log_date
-      ) GROUP BY user_id
-    `).all();
-    for (const r of studyXp22) if (r.xp > 0) insertXp22.run(r.user_id, r.xp, 'backfill:study');
-    const chapXp22 = db.prepare(
-      'SELECT user_id, COUNT(*) AS c FROM chapter_progress WHERE is_done = 1 GROUP BY user_id'
-    ).all();
-    for (const r of chapXp22) if (r.c > 0) insertXp22.run(r.user_id, r.c * 15, 'backfill:chapters');
+    // Whole thing is one transaction: if the process dies mid-backfill, the
+    // table won't exist on restart so the guard re-runs it cleanly — never a
+    // half-backfilled state that the table-existence guard would skip forever.
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE xp_log (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          delta      INTEGER NOT NULL,
+          reason     TEXT    NOT NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_xp_log_user ON xp_log(user_id);
+      `);
+      const insertXp22 = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
+      const studyXp22 = db.prepare(`
+        SELECT user_id, SUM(MIN(day_min, 180)) AS xp FROM (
+          SELECT user_id, log_date, SUM(minutes) AS day_min FROM study_log GROUP BY user_id, log_date
+        ) GROUP BY user_id
+      `).all();
+      for (const r of studyXp22) if (r.xp > 0) insertXp22.run(r.user_id, r.xp, 'backfill:study');
+      const chapXp22 = db.prepare(
+        'SELECT user_id, COUNT(*) AS c FROM chapter_progress WHERE is_done = 1 GROUP BY user_id'
+      ).all();
+      for (const r of chapXp22) if (r.c > 0) insertXp22.run(r.user_id, r.c * 15, 'backfill:chapters');
+    })();
   }
 
   // Migration 23: daily surprise reward log — UNIQUE(user_id, reward_date) is the
@@ -428,6 +433,14 @@ function openAndMigrate() {
     );
     CREATE INDEX IF NOT EXISTS idx_catchup_quest_items_quest ON catchup_quest_items(quest_id);
   `);
+
+  // Migration 25: preserve a chapter session's ORIGINAL due date when the
+  // catch-up planner reschedules it, so "was this overdue and later cleared?"
+  // (cleared_last7 count + comeback badge) survives the reschedule.
+  const cpCols25 = db.pragma('table_info(chapter_progress)').map(c => c.name);
+  if (!cpCols25.includes('original_scheduled_date')) {
+    db.exec('ALTER TABLE chapter_progress ADD COLUMN original_scheduled_date TEXT');
+  }
 
   return db;
 }

@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/db');
 const userCtx = require('../middleware/userContext');
-const { planCatchup, addDays } = require('../utils/catchup');
+const { planCatchup, addDays, LATE_CLEARED_PREDICATE } = require('../utils/catchup');
 const { localToday, questProgress, getActiveQuest } = require('../utils/gamify');
 
 const QUEST_BONUS_POINTS = 30;
@@ -41,8 +41,7 @@ router.get('/status', userCtx, (req, res) => {
     : 0;
   const clearedRecent = db.prepare(`
     SELECT COUNT(*) AS c FROM chapter_progress
-    WHERE user_id = ? AND is_done = 1 AND done_at IS NOT NULL AND scheduled_date IS NOT NULL
-      AND date(done_at,'localtime') > date(scheduled_date)
+    WHERE user_id = ? AND ${LATE_CLEARED_PREDICATE}
       AND date(done_at,'localtime') >= date('now','localtime','-6 days')
   `).get(req.userId).c;
   res.json({
@@ -69,7 +68,14 @@ router.post('/plan', userCtx, (req, res) => {
   `).all(req.userId, today)) existingLoadByDate[r.d] = r.c;
 
   const plan = planCatchup({ items, existingLoadByDate, todayStr: today });
-  const upd = db.prepare('UPDATE chapter_progress SET scheduled_date = ? WHERE id = ? AND user_id = ?');
+  // Preserve the ORIGINAL due date the first time an item is rescheduled, so the
+  // "cleared while overdue" metrics still credit it after the move (F2).
+  const upd = db.prepare(`
+    UPDATE chapter_progress
+    SET original_scheduled_date = COALESCE(original_scheduled_date, scheduled_date),
+        scheduled_date = ?
+    WHERE id = ? AND user_id = ?
+  `);
   db.transaction(() => {
     for (const p of plan) upd.run(p.newDate, p.id, req.userId);
   })();

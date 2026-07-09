@@ -3,8 +3,11 @@ const BADGES = require('./definitions');
 const { computeMaxStreak, computeComboDays, localToday } = require('../utils/streak');
 const { levelForXp } = require('../utils/xp');
 const { RARITY_PTS } = require('../utils/points');
+const { LATE_CLEARED_PREDICATE } = require('../utils/catchup');
 
-function checkBadges(userId) {
+// precomputed.comboDays lets the caller (processActivity) pass the combo count
+// it already computed, sparing a second full study_log scan here.
+function checkBadges(userId, precomputed = {}) {
   const earned = new Set(
     db.prepare('SELECT badge_id FROM user_badges WHERE user_id = ?').all(userId).map(r => r.badge_id)
   );
@@ -97,8 +100,7 @@ function checkBadges(userId) {
 
   const lateCleared = db.prepare(`
     SELECT COUNT(*) AS c FROM chapter_progress
-    WHERE user_id = ? AND is_done = 1 AND done_at IS NOT NULL AND scheduled_date IS NOT NULL
-      AND date(done_at,'localtime') > date(scheduled_date)
+    WHERE user_id = ? AND ${LATE_CLEARED_PREDICATE}
   `).get(userId).c;
   if (lateCleared >= 10) award('comeback');
 
@@ -110,11 +112,17 @@ function checkBadges(userId) {
 
   const dailyGoal = db.prepare('SELECT daily_goal_minutes FROM users WHERE id = ?').get(userId);
   if (dailyGoal && dailyGoal.daily_goal_minutes > 0) {
-    const minutesByDate = {};
-    for (const r of db.prepare('SELECT log_date, SUM(minutes) AS m FROM study_log WHERE user_id = ? GROUP BY log_date').all(userId)) {
-      minutesByDate[r.log_date] = r.m;
+    let comboDays = precomputed.comboDays;
+    if (comboDays === undefined) {
+      const minutesByDate = {};
+      for (const r of db.prepare(
+        "SELECT log_date, SUM(minutes) AS m FROM study_log WHERE user_id = ? AND log_date >= date('now','localtime','-15 days') GROUP BY log_date"
+      ).all(userId)) {
+        minutesByDate[r.log_date] = r.m;
+      }
+      comboDays = computeComboDays(minutesByDate, dailyGoal.daily_goal_minutes, today);
     }
-    if (computeComboDays(minutesByDate, dailyGoal.daily_goal_minutes, today) >= 7) award('combo_7');
+    if (comboDays >= 7) award('combo_7');
   }
 
   // ── 成績類 ──

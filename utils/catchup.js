@@ -35,4 +35,13 @@ function planCatchup({ items, existingLoadByDate = {}, todayStr, days = 7, maxPe
   return out;
 }
 
-module.exports = { planCatchup, addDays };
+// Shared definition of "an overdue chapter session that was later cleared":
+// completed strictly after the date it was ORIGINALLY due. The catch-up planner
+// preserves original_scheduled_date when it reschedules an overdue item, so
+// COALESCE falls back to scheduled_date for items that were never rescheduled.
+// Used by both the dashboard cleared_last7 count and the comeback badge so they
+// can never drift apart. Assumes the row's chapter_progress alias is unqualified.
+const LATE_CLEARED_PREDICATE = `is_done = 1 AND done_at IS NOT NULL
+      AND date(done_at,'localtime') > date(COALESCE(original_scheduled_date, scheduled_date))`;
+
+module.exports = { planCatchup, addDays, LATE_CLEARED_PREDICATE };
