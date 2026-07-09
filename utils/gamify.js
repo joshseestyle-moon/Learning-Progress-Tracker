@@ -25,14 +25,67 @@ function totalXpOf(userId) {
   return db.prepare('SELECT COALESCE(SUM(delta),0) AS x FROM xp_log WHERE user_id = ?').get(userId).x;
 }
 
+// Combo only depends on the trailing ~2 weeks (streak breaks after one missed
+// day, multiplier caps at 10 days), so bound the scan instead of reading the
+// whole study_log history on every activity/status call.
 function comboOf(userId, todayStr) {
   const user = db.prepare('SELECT daily_goal_minutes FROM users WHERE id = ?').get(userId) || {};
   const minutesByDate = {};
-  for (const r of db.prepare('SELECT log_date, SUM(minutes) AS m FROM study_log WHERE user_id = ? GROUP BY log_date').all(userId)) {
+  for (const r of db.prepare(
+    "SELECT log_date, SUM(minutes) AS m FROM study_log WHERE user_id = ? AND log_date >= date('now','localtime','-15 days') GROUP BY log_date"
+  ).all(userId)) {
     minutesByDate[r.log_date] = r.m;
   }
   const days = computeComboDays(minutesByDate, user.daily_goal_minutes || 0, todayStr);
   return { days, multiplier: comboMultiplier(days), minutesByDate, dailyGoal: user.daily_goal_minutes || 0 };
+}
+
+// XP accounting primitives shared by processActivity and achieveGoalOnCreate.
+// grant/grantOnce apply the combo multiplier; grantRaw inserts a pre-computed
+// delta (used by the study cap, which caps the post-multiplier amount).
+function makeGranter(userId, mult) {
+  const insertXp = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
+  const xpReasonExists = db.prepare('SELECT 1 AS x FROM xp_log WHERE user_id = ? AND reason = ? LIMIT 1');
+  const state = { gained: 0 };
+  const grantRaw = (delta, reason) => {
+    if (delta > 0) { insertXp.run(userId, delta, reason); state.gained += delta; }
+  };
+  const grant = (base, reason, m = mult) => grantRaw(Math.round(base * m), reason);
+  const grantOnce = (base, reason, m = mult) => {
+    if (!xpReasonExists.get(userId, reason)) grant(base, reason, m);
+  };
+  return { grant, grantOnce, grantRaw, state };
+}
+
+function xpSummary(xpBefore, gained) {
+  const total = xpBefore + gained;
+  const before = levelForXp(xpBefore);
+  const after = levelForXp(total);
+  return {
+    gained, total,
+    level: after.level,
+    leveledUp: after.level > before.level,
+    titleKey: 'level.title.' + after.titleTier,
+    intoLevel: after.intoLevel,
+    toNext: after.toNext,
+  };
+}
+
+// Award every open chapter/grade goal of goalType whose target is now met:
+// mark done, grant horizon XP once, and append to `out`. Must run inside the
+// caller's transaction; grantOnce is supplied so XP flows through its accounting.
+function autoAchieveGoals(userId, goalType, grantOnce, out) {
+  const open = db.prepare('SELECT * FROM goals WHERE user_id = ? AND goal_type = ? AND is_done = 0').all(userId, goalType);
+  const getPeriod = db.prepare('SELECT * FROM periods WHERE id = ?');
+  for (const g of open) {
+    const period = g.period_id ? getPeriod.get(g.period_id) : null;
+    const { achieved } = computeProgress(g, metricsFor(userId, g, goalWindow(g, period)));
+    if (achieved) {
+      db.prepare('UPDATE goals SET is_done = 1, done_at = ? WHERE id = ?').run(new Date().toISOString(), g.id);
+      grantOnce(XP_RULES.goal[g.horizon] || XP_RULES.goal.short, 'goal:' + g.id);
+      out.push({ id: g.id, title: g.title, horizon: g.horizon });
+    }
+  }
 }
 
 function processActivity(userId, event) {
@@ -40,36 +93,36 @@ function processActivity(userId, event) {
   const combo = comboOf(userId, today);
   const mult = combo.multiplier;
   const xpBefore = totalXpOf(userId);
+  const { grant, grantOnce, grantRaw, state } = makeGranter(userId, mult);
 
-  let gained = 0;
   let surprise = null;
   let questCompleted = null;
   const goalsAchieved = [];
 
-  const insertXp = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
-  const xpReasonExists = db.prepare('SELECT 1 AS x FROM xp_log WHERE user_id = ? AND reason = ? LIMIT 1');
-  const grant = (base, reason) => {
-    const delta = Math.round(base * mult);
-    if (delta > 0) { insertXp.run(userId, delta, reason); gained += delta; }
-  };
-  const grantOnce = (base, reason) => {
-    if (!xpReasonExists.get(userId, reason)) grant(base, reason);
-  };
-
   const tx = db.transaction(() => {
     // 1. Direct XP for the activity itself
     if (event.type === 'study' && event.minutes > 0) {
-      // Daily cap applies to raw minutes per log_date; the log row is already
-      // inserted, so subtract this entry to get what was credited before it.
-      const dayTotal = combo.minutesByDate[event.logDate] || event.minutes;
-      const alreadyCredited = Math.min(XP_RULES.studyDailyCap, Math.max(0, dayTotal - event.minutes));
-      const creditable = Math.min(event.minutes, XP_RULES.studyDailyCap - alreadyCredited);
-      if (creditable > 0) grant(creditable * XP_RULES.studyPerMinute, 'study:' + event.id);
+      // Daily cap: derive "study XP already emitted this calendar day" from
+      // xp_log itself (not from study_log rows), so deleting + re-adding a log
+      // can't reset the cap (F6). Backdated entries (logDate ≠ today) earn no
+      // combo multiplier (F7) — they still earn base XP, just not today's bonus.
+      const studyXpToday = db.prepare(
+        "SELECT COALESCE(SUM(delta),0) AS x FROM xp_log WHERE user_id = ? AND reason LIKE 'study:%' AND date(created_at,'localtime') = ?"
+      ).get(userId, today).x;
+      const remaining = XP_RULES.studyDailyCap - studyXpToday;
+      if (remaining > 0) {
+        const studyMult = event.logDate === today ? mult : 1;
+        const base = event.minutes * XP_RULES.studyPerMinute;
+        const delta = Math.min(Math.round(base * studyMult), remaining);
+        grantRaw(delta, 'study:' + event.id);
+      }
     } else if (event.type === 'chapter') {
       grantOnce(XP_RULES.chapterDone, 'chapter:' + event.progressId);
     } else if (event.type === 'task') {
       for (const n of event.partNums || []) grantOnce(XP_RULES.taskPart, `task:${event.taskId}:${n}`);
       if (event.taskDone) grantOnce(XP_RULES.taskComplete, `task:${event.taskId}:done`);
+    } else if (event.type === 'assignment') {
+      grantOnce(XP_RULES.assignmentDone, 'assignment:' + event.id);
     } else if (event.type === 'goal') {
       const g = db.prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?').get(event.goalId, userId);
       if (g && g.is_done) grantOnce(XP_RULES.goal[g.horizon] || XP_RULES.goal.short, 'goal:' + g.id);
@@ -96,19 +149,7 @@ function processActivity(userId, event) {
 
     // 3. Auto-complete chapter/grade goals this event may have satisfied
     const goalType = event.type === 'chapter' ? 'chapter' : (event.type === 'grade' ? 'grade' : null);
-    if (goalType) {
-      const open = db.prepare('SELECT * FROM goals WHERE user_id = ? AND goal_type = ? AND is_done = 0').all(userId, goalType);
-      const getPeriod = db.prepare('SELECT * FROM periods WHERE id = ?');
-      for (const g of open) {
-        const period = g.period_id ? getPeriod.get(g.period_id) : null;
-        const { achieved } = computeProgress(g, metricsFor(userId, g, goalWindow(g, period)));
-        if (achieved) {
-          db.prepare('UPDATE goals SET is_done = 1, done_at = ? WHERE id = ?').run(new Date().toISOString(), g.id);
-          grantOnce(XP_RULES.goal[g.horizon] || XP_RULES.goal.short, 'goal:' + g.id);
-          goalsAchieved.push({ id: g.id, title: g.title, horizon: g.horizon });
-        }
-      }
-    }
+    if (goalType) autoAchieveGoals(userId, goalType, grantOnce, goalsAchieved);
 
     // 4. Catch-up quest progress — chapter/task completions may clear snapshot items
     if (event.type === 'chapter' || event.type === 'task') {
@@ -119,44 +160,56 @@ function processActivity(userId, event) {
         // bonus points are flat (combo multiplier only applies to XP and surprise)
         db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)')
           .run(userId, quest.bonus_points, 'quest:' + quest.id);
-        const gainedBefore = gained;
+        const gainedBefore = state.gained;
         grantOnce(quest.bonus_xp, 'quest:' + quest.id);
         questCompleted = {
           id: quest.id,
           title: quest.title,
           bonusPoints: quest.bonus_points,
-          bonusXp: gained - gainedBefore,
+          bonusXp: state.gained - gainedBefore,
         };
       }
     }
   });
   tx();
 
-  // Badge checks run full-table scans — skip them for no-op events (e.g. a part
-  // toggled that granted nothing and completed nothing), matching the old
-  // per-route behavior of checking only on completions.
-  const badgeRelevant = gained > 0 || !!surprise || goalsAchieved.length > 0 || !!questCompleted
-    || event.type !== 'task' || !!event.taskDone;
-  const newBadges = badgeRelevant ? checkBadges(userId) : [];
+  // Badge checks run full-table scans — skip them for no-op events (a part
+  // toggled that granted nothing and completed nothing). Every non-'task' event
+  // is badge-relevant; 'task' events only when they granted or completed
+  // something. Combo days are already computed above, so pass them through to
+  // spare checkBadges a second full-history scan (F10).
+  const badgeRelevant = event.type !== 'task' || state.gained > 0 || !!surprise
+    || !!questCompleted || !!event.taskDone;
+  const newBadges = badgeRelevant ? checkBadges(userId, { comboDays: combo.days }) : [];
 
-  const total = xpBefore + gained;
-  const before = levelForXp(xpBefore);
-  const after = levelForXp(total);
   return {
     newBadges,
-    xp: {
-      gained,
-      total,
-      level: after.level,
-      leveledUp: after.level > before.level,
-      titleKey: 'level.title.' + after.titleTier,
-      intoLevel: after.intoLevel,
-      toNext: after.toNext,
-    },
+    xp: xpSummary(xpBefore, state.gained),
     combo: { days: combo.days, multiplier: mult },
     surprise,
     questCompleted,
     goalsAchieved,
+  };
+}
+
+// Called by POST /api/goals right after a chapter/grade goal is created: if its
+// target is already satisfied by pre-existing progress, award it immediately so
+// the reward isn't silently lost (F1). Text goals go through their manual toggle.
+function achieveGoalOnCreate(userId, goalId) {
+  const goal = db.prepare('SELECT * FROM goals WHERE id = ? AND user_id = ? AND is_done = 0').get(goalId, userId);
+  if (!goal || (goal.goal_type !== 'chapter' && goal.goal_type !== 'grade')) return { goalsAchieved: [] };
+
+  const mult = comboOf(userId, localToday()).multiplier;
+  const xpBefore = totalXpOf(userId);
+  const { grantOnce, state } = makeGranter(userId, mult);
+  const goalsAchieved = [];
+  db.transaction(() => autoAchieveGoals(userId, goal.goal_type, grantOnce, goalsAchieved))();
+
+  if (!goalsAchieved.length) return { goalsAchieved: [] };
+  return {
+    goalsAchieved,
+    xp: xpSummary(xpBefore, state.gained),
+    newBadges: checkBadges(userId),
   };
 }
 
@@ -208,4 +261,4 @@ function getStatus(userId) {
   };
 }
 
-module.exports = { processActivity, getStatus, localToday, questProgress, getActiveQuest };
+module.exports = { processActivity, achieveGoalOnCreate, getStatus, localToday, questProgress, getActiveQuest };

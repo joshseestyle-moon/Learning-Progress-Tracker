@@ -6,7 +6,7 @@ const { goalWindow, computeProgress } = require('../utils/goalProgress');
 // Metrics inside the goal window. Achievement transitions (is_done + XP) are
 // owned by processActivity (utils/gamify.js); GET only computes, never writes.
 const { metricsFor } = require('../utils/goalMetrics');
-const { processActivity } = require('../utils/gamify');
+const { processActivity, achieveGoalOnCreate } = require('../utils/gamify');
 
 const TYPES = ['chapter', 'grade', 'text'];
 const HORIZONS = ['short', 'mid', 'long'];
@@ -92,7 +92,11 @@ router.post('/', userCtx, (req, res) => {
     INSERT INTO goals (user_id, title, goal_type, horizon, period_id, subject_id, exam_type, target_value, due_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(req.userId, g.title, g.goal_type, g.horizon, g.period_id, g.subject_id, g.exam_type, g.target_value, g.due_date);
-  res.status(201).json({ id: result.lastInsertRowid, ...g });
+  // A chapter/grade goal may already be satisfied by pre-existing progress —
+  // award it now so the reward isn't lost (the frontend toast fires on the
+  // goalsAchieved/xp fields via api.js's gamify-result interceptor).
+  const gamify = achieveGoalOnCreate(req.userId, result.lastInsertRowid);
+  res.status(201).json({ id: result.lastInsertRowid, ...g, ...gamify });
 });
 
 router.put('/:id', userCtx, (req, res) => {
