@@ -11,6 +11,7 @@ import { render as renderPrint }     from './print.js';
 import { render as renderBadges }    from './badges.js';
 import { render as renderShop }      from './shop.js';
 import { render as renderGoals }     from './goals.js';
+import { render as renderGrowth }    from './growth.js';
 import { t } from './i18n.js';
 
 const routes = {
@@ -25,6 +26,7 @@ const routes = {
   badges:    { titleKey: 'nav.badges',    fn: renderBadges    },
   shop:      { titleKey: 'nav.shop',      fn: renderShop      },
   goals:     { titleKey: 'nav.goals',     fn: renderGoals     },
+  growth:    { titleKey: 'nav.growth',    fn: renderGrowth    },
   subjects:  { titleKey: 'nav.subjects',  fn: renderSubjects  },
   print:     { titleKey: 'nav.print',     fn: renderPrint     },
 };

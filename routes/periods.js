@@ -6,7 +6,6 @@ const TYPES = ['semester1', 'winter', 'semester2', 'summer'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Aggregate learning stats within a date range.
-// goals_achieved / xp_earned will be added when the goals (Phase 2) and XP (Phase 3) tables exist.
 function summarize(userId, from, to) {
   const study = db.prepare(`
     SELECT COALESCE(SUM(minutes), 0) AS total_minutes, COUNT(DISTINCT log_date) AS active_days
@@ -22,11 +21,24 @@ function summarize(userId, from, to) {
     SELECT COUNT(*) AS n FROM daily_tasks
     WHERE user_id = ? AND is_done = 1 AND date(task_date) BETWEEN date(?) AND date(?)
   `).get(userId, from, to);
+  const goals = db.prepare(`
+    SELECT COUNT(*) AS n FROM goals
+    WHERE user_id = ? AND is_done = 1 AND done_at IS NOT NULL
+      AND date(done_at,'localtime') BETWEEN date(?) AND date(?)
+  `).get(userId, from, to);
+  // backfill excluded: the one-time historical grant belongs to no period
+  const xp = db.prepare(`
+    SELECT COALESCE(SUM(delta), 0) AS x FROM xp_log
+    WHERE user_id = ? AND reason NOT LIKE 'backfill:%'
+      AND date(created_at,'localtime') BETWEEN date(?) AND date(?)
+  `).get(userId, from, to);
   return {
     total_minutes: study.total_minutes,
     active_days: study.active_days,
     chapters_done: chapters.n,
     tasks_done: tasks.n,
+    goals_achieved: goals.n,
+    xp_earned: xp.x,
   };
 }
 
