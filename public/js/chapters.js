@@ -1,4 +1,4 @@
-import { get, post, put, del, patch, escHtml, fmtDate } from './api.js';
+import { get, post, put, del, patch, escHtml, fmtDate, today } from './api.js';
 import { t } from './i18n.js';
 
 let subjects = [];
@@ -311,7 +311,7 @@ function attachEvents(el, chapters) {
         openTimeModal(el,
           async (minutes) => {
             if (minutes > 0) {
-              const todayStr = new Date().toISOString().slice(0, 10);
+              const todayStr = today();
               try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.id }); } catch (_) {}
             }
             await refresh(el);
@@ -348,7 +348,7 @@ function attachEvents(el, chapters) {
         openTimeModal(el,
           async (minutes) => {
             if (minutes > 0) {
-              const todayStr = new Date().toISOString().slice(0, 10);
+              const todayStr = today();
               try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.chId }); } catch (_) {}
             }
             await refresh(el);

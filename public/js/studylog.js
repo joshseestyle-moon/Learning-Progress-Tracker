@@ -1,4 +1,4 @@
-import { get, post, put, del, escHtml, today, getUserId, fmtMonth } from './api.js';
+import { get, post, put, del, escHtml, today, ymd, getUserId, fmtMonth } from './api.js';
 import { t } from './i18n.js';
 
 let subjects = [];
@@ -200,7 +200,7 @@ function renderChart(el, weekly) {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const ds = d.toISOString().slice(0, 10);
+    const ds = ymd(d);
     labels.push(ds.slice(5));
     dateMap[ds] = {};
   }
@@ -217,7 +217,7 @@ function renderChart(el, weekly) {
     data: labels.map((_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
-      return dateMap[d.toISOString().slice(0,10)]?.[name] || 0;
+      return dateMap[ymd(d)]?.[name] || 0;
     }),
     backgroundColor: subjectColors[name] + 'cc',
     borderColor: subjectColors[name],

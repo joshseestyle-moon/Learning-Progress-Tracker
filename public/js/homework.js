@@ -1,4 +1,4 @@
-import { get, post, patch, del, escHtml, fmtDate, today } from './api.js';
+import { get, post, patch, del, escHtml, fmtDate, today, ymd } from './api.js';
 import { t } from './i18n.js';
 
 let _el = null;
@@ -17,7 +17,7 @@ async function refresh(el) {
 }
 
 function offsetDate(days) {
-  const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10);
+  const d = new Date(); d.setDate(d.getDate() + days); return ymd(d);
 }
 
 function buildPage(tasks) {

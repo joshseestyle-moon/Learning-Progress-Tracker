@@ -1,4 +1,4 @@
-import { get, post, patch, escHtml, fmtDate, today, daysLeft } from './api.js';
+import { get, post, patch, escHtml, fmtDate, today, ymd, daysLeft } from './api.js';
 import { t } from './i18n.js';
 import { levelCard } from './gamify-ui.js';
 
@@ -7,7 +7,7 @@ let _el = null;
 function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return ymd(d);
 }
 
 export async function render(el) {

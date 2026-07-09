@@ -1,4 +1,4 @@
-import { get, escHtml, fmtDate, today, getUserName } from './api.js';
+import { get, escHtml, fmtDate, today, ymd, getUserName } from './api.js';
 import { t } from './i18n.js';
 
 function TYPE_LABEL() {
@@ -16,8 +16,7 @@ function getWeekRange() {
   const dow = (now.getDay() + 6) % 7; // Mon=0
   const mon = new Date(now); mon.setDate(now.getDate() - dow);
   const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-  const fmt = d => d.toISOString().slice(0, 10);
-  return { start: fmt(mon), end: fmt(sun) };
+  return { start: ymd(mon), end: ymd(sun) };
 }
 
 export async function render(el) {
