@@ -41,10 +41,12 @@ router.get('/growth-summary', userCtx, (req, res) => {
 
   // Flywheel node activity for the current week (goal → study → reward → review)
   const wk = "date('now','localtime','weekday 0','-6 days')";
+  // "Active this week" = a goal created or achieved within the week, matching
+  // the in-window activity semantics of the other three nodes. (A merely-open
+  // stale goal must NOT keep the node green, or the hint could never fire.)
   const goalActive = db.prepare(`
     SELECT 1 AS x FROM goals WHERE user_id = ? AND (
-      is_done = 0
-      OR date(created_at,'localtime') >= ${wk}
+      date(created_at,'localtime') >= ${wk}
       OR (done_at IS NOT NULL AND date(done_at,'localtime') >= ${wk})
     ) LIMIT 1
   `).get(userId);
