@@ -27,3 +27,4 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 （格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）
 - [2026-07-08] 情境：用 Bash 工具跑 啟動.bat｜錯誤假設：Git Bash 能處理中文檔名｜修正：中文檔名的 .bat 用 PowerShell 工具跑（`& ".\啟動.bat"`，run_in_background）｜規則已更新：否，單點技巧記在此即可
 - [2026-07-08] 情境：db.js 加 Migration 19 用了 `subCols` 變數名｜錯誤假設：新變數名沒被用過｜修正：openAndMigrate() 是同一個函式作用域，加新 migration 前先 Grep 變數名，慣例用編號後綴（如 subCols19）｜規則已更新：否，此條即紀錄
+- [2026-07-09] 情境：goals 頁炸 `null.newBadges`（使用者回報）｜錯誤假設：所有 API 都回 JSON 物件｜修正：`GET /periods/current` 無命中時回 `res.json(null)`，而 api.js 的回應攔截器直接讀 `data.newBadges`；攔截器已改為先驗 `data && typeof data === 'object'`。新端點若回 null/純值，前端不用改｜規則已更新：否，api.js 集中防護即根治

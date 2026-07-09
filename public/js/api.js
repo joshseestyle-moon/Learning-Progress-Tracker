@@ -19,12 +19,16 @@ export async function api(path, options = {}) {
     throw new Error(tErr(err.error) || tErr('請求失敗'));
   }
   const data = await res.json();
-  if (data.newBadges && data.newBadges.length > 0) {
-    window.dispatchEvent(new CustomEvent('badge-earned', { detail: data.newBadges }));
-  }
-  if ((data.xp && data.xp.gained > 0) || data.surprise || data.questCompleted
-      || (data.goalsAchieved && data.goalsAchieved.length > 0)) {
-    window.dispatchEvent(new CustomEvent('gamify-result', { detail: data }));
+  // Some endpoints legitimately return null (e.g. GET /periods/current with no
+  // matching period) — only inspect gamify fields on object responses.
+  if (data && typeof data === 'object') {
+    if (data.newBadges && data.newBadges.length > 0) {
+      window.dispatchEvent(new CustomEvent('badge-earned', { detail: data.newBadges }));
+    }
+    if ((data.xp && data.xp.gained > 0) || data.surprise || data.questCompleted
+        || (data.goalsAchieved && data.goalsAchieved.length > 0)) {
+      window.dispatchEvent(new CustomEvent('gamify-result', { detail: data }));
+    }
   }
   return data;
 }
