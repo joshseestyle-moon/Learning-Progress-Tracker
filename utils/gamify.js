@@ -48,6 +48,7 @@ function processActivity(userId, event) {
 
   let gained = 0;
   let surprise = null;
+  let questCompleted = null;
   const goalsAchieved = [];
 
   const insertXp = db.prepare('INSERT INTO xp_log (user_id, delta, reason) VALUES (?, ?, ?)');
@@ -113,6 +114,26 @@ function processActivity(userId, event) {
         }
       }
     }
+
+    // 4. Catch-up quest progress — chapter/task completions may clear snapshot items
+    if (event.type === 'chapter' || event.type === 'task') {
+      const quest = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
+      if (quest && quest.deadline_date >= today && questProgress(quest) >= quest.target_count) {
+        db.prepare("UPDATE catchup_quests SET status = 'completed', completed_at = ? WHERE id = ?")
+          .run(new Date().toISOString(), quest.id);
+        // bonus points are flat (combo multiplier only applies to XP and surprise)
+        db.prepare('INSERT INTO point_log (user_id, delta, reason) VALUES (?, ?, ?)')
+          .run(userId, quest.bonus_points, 'quest:' + quest.id);
+        const gainedBefore = gained;
+        grantOnce(quest.bonus_xp, 'quest:' + quest.id);
+        questCompleted = {
+          id: quest.id,
+          title: quest.title,
+          bonusPoints: quest.bonus_points,
+          bonusXp: gained - gainedBefore,
+        };
+      }
+    }
   });
   tx();
 
@@ -134,9 +155,21 @@ function processActivity(userId, event) {
     },
     combo: { days: combo.days, multiplier: mult },
     surprise,
-    questCompleted: null, // Phase 4 (catch-up quests)
+    questCompleted,
     goalsAchieved,
   };
+}
+
+// Completed count among a quest's snapshot items (shared with routes/catchup.js).
+function questProgress(quest) {
+  return db.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM catchup_quest_items qi JOIN chapter_progress cp ON cp.id = qi.item_id
+        WHERE qi.quest_id = ? AND qi.kind = 'chapter' AND cp.is_done = 1)
+      +
+      (SELECT COUNT(*) FROM catchup_quest_items qi JOIN daily_tasks dt ON dt.id = qi.item_id
+        WHERE qi.quest_id = ? AND qi.kind = 'task' AND dt.is_done = 1) AS done
+  `).get(quest.id, quest.id).done;
 }
 
 // Snapshot for GET /api/gamify/status and the sidebar chip.
@@ -148,6 +181,7 @@ function getStatus(userId) {
   const surpriseToday = db.prepare(
     'SELECT tier, points FROM daily_reward_log WHERE user_id = ? AND reward_date = ?'
   ).get(userId, today) || null;
+  const quest = db.prepare("SELECT * FROM catchup_quests WHERE user_id = ? AND status = 'active'").get(userId);
   return {
     total_xp: total,
     level: lv.level,
@@ -158,8 +192,9 @@ function getStatus(userId) {
     combo_multiplier: combo.multiplier,
     daily_goal: combo.dailyGoal,
     surprise_today: surpriseToday,
-    active_quest: null, // Phase 4
+    active_quest: quest && quest.deadline_date >= today
+      ? { ...quest, done_count: questProgress(quest) } : null,
   };
 }
 
-module.exports = { processActivity, getStatus, localToday };
+module.exports = { processActivity, getStatus, localToday, questProgress };

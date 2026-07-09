@@ -89,6 +89,20 @@ function checkBadges(userId) {
   if (hwStreak >= 3) award('hw_streak_3');
   if (hwStreak >= 7) award('hw_streak_7');
 
+  // ── 補救挑戰類 ──
+  const questsDone = db.prepare(
+    "SELECT COUNT(*) AS c FROM catchup_quests WHERE user_id = ? AND status = 'completed'"
+  ).get(userId).c;
+  if (questsDone >= 1) award('quest_first');
+  if (questsDone >= 5) award('quest_5');
+
+  const lateCleared = db.prepare(`
+    SELECT COUNT(*) AS c FROM chapter_progress
+    WHERE user_id = ? AND is_done = 1 AND done_at IS NOT NULL AND scheduled_date IS NOT NULL
+      AND date(done_at,'localtime') > date(scheduled_date)
+  `).get(userId).c;
+  if (lateCleared >= 10) award('comeback');
+
   // ── 等級/連續達標類 ──
   const totalXp = db.prepare('SELECT COALESCE(SUM(delta),0) AS x FROM xp_log WHERE user_id = ?').get(userId).x;
   const level = levelForXp(totalXp).level;

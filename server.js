@@ -24,6 +24,7 @@ app.use('/api/daily-tasks', require('./routes/daily-tasks'));
 app.use('/api/periods',     require('./routes/periods'));
 app.use('/api/goals',       require('./routes/goals'));
 app.use('/api/gamify',      require('./routes/gamify'));
+app.use('/api/catchup',     require('./routes/catchup'));
 
 // Backup: checkpoint WAL first so the downloaded file is complete
 app.get('/api/backup', (req, res) => {

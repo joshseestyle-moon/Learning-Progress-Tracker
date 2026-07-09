@@ -14,9 +14,9 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify;
+  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup;
   try {
-    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
@@ -26,6 +26,7 @@ export async function render(el) {
       get('/assignments?upcoming=7'),
       get('/goals'),
       get('/gamify/status'),
+      get('/catchup/status'),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -110,10 +111,10 @@ export async function render(el) {
         ${studyCard(tomorrowProgress, t('empty.tomorrowStudy'))}
       </div>
 
-      <!-- Overdue study progress -->
+      <!-- Overdue study progress + catch-up engine -->
       <div class="card">
         <div class="card-title">${t('card.overdue')}</div>
-        ${overdueCard(overdueProgress)}
+        ${overdueCard(overdueProgress, catchup)}
       </div>
 
       <!-- Exam countdown -->
@@ -292,9 +293,53 @@ function assignmentDueCard(items) {
   }).join('');
 }
 
-function overdueCard(items) {
-  if (!items.length) return `<div style="font-size:.85rem;color:var(--success);">${t('empty.overdue')}</div>`;
-  return items.map(p => {
+function catchupQuestBlock(q) {
+  const left = Math.max(0, daysLeft(q.deadline_date));
+  const pct = q.target_count > 0 ? Math.min(100, Math.round(q.done_count / q.target_count * 100)) : 0;
+  return `
+    <div style="border:1.5px solid #f59e0b;border-radius:var(--radius-sm);padding:.5rem .6rem;margin-bottom:.7rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:.8rem;">
+        <span style="font-weight:700;color:#f59e0b;">⚔️ ${t('catchup.questActive')}</span>
+        <span class="countdown-pill ${left <= 1 ? 'urgent' : 'soon'}">${t('catchup.daysLeft', { n: left })}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-top:.35rem;">
+        <div style="flex:1;height:7px;border-radius:4px;background:var(--bg3,rgba(128,128,128,.2));overflow:hidden;">
+          <div style="width:${pct}%;height:100%;border-radius:4px;background:#f59e0b;"></div>
+        </div>
+        <span style="font-size:.75rem;font-weight:700;">${t('catchup.questProgress', { done: q.done_count, target: q.target_count })}</span>
+      </div>
+    </div>`;
+}
+
+function overdueCard(items, cu) {
+  const quest = cu && cu.active_quest;
+  const cleared = cu ? cu.cleared_last7 : 0;
+  const clearedLine = cleared > 0
+    ? `<div style="font-size:.78rem;color:var(--success);margin-bottom:.5rem;">✨ ${t('catchup.clearedRecent', { n: cleared })}</div>` : '';
+
+  if (!items.length) {
+    return (quest ? catchupQuestBlock(quest) : '') + clearedLine
+      + `<div style="font-size:.85rem;color:var(--success);">${t('empty.overdue')}</div>`;
+  }
+
+  const cheer = t('catchup.cheer.' + (new Date().getDate() % 5 + 1));
+  const total = cleared + items.length;
+  const pct = total > 0 ? Math.round(cleared / total * 100) : 0;
+  const header = `
+    ${quest ? catchupQuestBlock(quest) : ''}
+    <div style="font-size:.8rem;color:var(--text2);margin-bottom:.45rem;">💛 ${cheer}</div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;">
+      <div style="flex:1;height:7px;border-radius:4px;background:var(--bg3,rgba(128,128,128,.2));overflow:hidden;">
+        <div style="width:${pct}%;height:100%;border-radius:4px;background:var(--success);"></div>
+      </div>
+      <span style="font-size:.72rem;color:var(--text2);">${cleared} / ${total}</span>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem;">
+      <button class="btn btn-ghost btn-sm" onclick="dashCatchupPlan()">${t('catchup.planBtn')}</button>
+      ${quest ? '' : `<button class="btn btn-ghost btn-sm" onclick="dashCatchupQuest()">${t('catchup.questBtn')}</button>`}
+    </div>`;
+
+  return header + items.map(p => {
     const isPreview = p.type === 'preview';
     const typeLabel = isPreview ? t('dash.preview') : t('dash.review');
     const daysLate  = Math.floor((new Date(today() + 'T00:00:00') - new Date(p.scheduled_date + 'T00:00:00')) / 86400000);
@@ -528,6 +573,34 @@ window.dashToggleProgress = async function(progressId, removeOnDone) {
   } catch (e) {
     btn.disabled = false;
     btn.style.opacity = '';
+    alert(t('alert.saveFailed', { msg: e.message }));
+  }
+};
+
+// ── Catch-up engine buttons (補救卡) ──
+
+window.dashCatchupPlan = async function() {
+  try {
+    const r = await post('/catchup/plan', {});
+    if (r.moved > 0) {
+      window.dispatchEvent(new CustomEvent('app-toast', {
+        detail: { icon: '📅', title: t('catchup.planDone'), color: 'var(--accent)' },
+      }));
+    }
+    if (_el) render(_el);
+  } catch (e) {
+    alert(t('alert.saveFailed', { msg: e.message }));
+  }
+};
+
+window.dashCatchupQuest = async function() {
+  try {
+    const q = await post('/catchup/quest', {});
+    window.dispatchEvent(new CustomEvent('app-toast', {
+      detail: { icon: '⚔️', title: t('catchup.questStarted', { target: q.target_count }), color: '#f59e0b' },
+    }));
+    if (_el) render(_el);
+  } catch (e) {
     alert(t('alert.saveFailed', { msg: e.message }));
   }
 };

@@ -20,8 +20,8 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 
 ## 進行中的工作
 - 工作分支：`dev-2026-07-08`（所有異動在此分支，勿直接動 main）。
-- 飛輪升級計畫：`docs\plan-flywheel.md`。**Phase 1-3 已完成並驗證**（P1/P2：6f8cda3、b3bb93f；P3：XP/等級/combo/每日驚喜，Mig 22-23）。下一步 Phase 4（補救引擎，Mig 24），之後 Phase 5（成長頁）。
-- Phase 4 注意：`utils\gamify.js` processActivity 已預留 `questCompleted` 回傳欄位，挑戰進度比對加在該函式內。XP reason 慣例：`study:<id>`、`chapter:<progressId>`、`task:<taskId>:<partNum|done>`、`goal:<id>`；重複觸發靠 grantOnce（查 xp_log reason 是否存在）防重。測試資料清理：測完刪測試用帳號的 goals/periods 與 xp_log/daily_reward_log/point_log 測試列。
+- 飛輪升級計畫：`docs\plan-flywheel.md`。**Phase 1-4 已完成並驗證**（P1/P2：6f8cda3、b3bb93f；P3 XP/combo/驚喜 Mig 22-23：f0d16e9；P4 補救引擎 Mig 24）。剩 Phase 5（成長頁：`/api/growth/summary`、`/api/periods/:id/summary`、`public\js\growth.js`）。
+- Phase 5 注意：XP reason 慣例 `study:<id>`、`chapter:<progressId>`、`task:<taskId>:<partNum|done>`、`goal:<id>`、`quest:<id>`；重複觸發靠 grantOnce（查 xp_log reason）防重。前端 toast 通道：`gamify-result`（api.js 自動派發）與 `app-toast`（頁面模組手動派發），監聽都在 app.html。測試資料清理：測完刪測試用帳號的 goals/periods/catchup_quests 與 xp_log/daily_reward_log/point_log 測試列。
 
 ## 教訓紀錄
 （格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）

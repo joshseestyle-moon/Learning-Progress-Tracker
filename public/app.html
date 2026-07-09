@@ -244,7 +244,16 @@
     (d.goalsAchieved || []).forEach(g => {
       queue(() => showGamifyToast('🎯', t('goal.achievedToast'), esc(g.title), '#34d399'));
     });
+    if (d.questCompleted) {
+      queue(() => showGamifyToast('🏆', t('catchup.questDoneToast'),
+        t('catchup.questReward', { p: d.questCompleted.bonusPoints, x: d.questCompleted.bonusXp }), '#f59e0b'));
+    }
     refreshLevelChip();
+  });
+
+  // Generic toast channel for page modules (e.g. dashboard catch-up buttons)
+  window.addEventListener('app-toast', (e) => {
+    showGamifyToast(e.detail.icon || '💬', e.detail.title || '', e.detail.sub || '', e.detail.color || 'var(--accent)');
   });
 </script>
 

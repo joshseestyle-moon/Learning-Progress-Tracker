@@ -20,6 +20,10 @@ module.exports = [
   { id: 'hw_streak_3',   category: '完成',  icon: '📌', name: '作業達人',   desc: '連續3天完成所有作業',            rarity: 'uncommon' },
   { id: 'hw_streak_7',   category: '完成',  icon: '🥇', name: '作業之星',   desc: '連續7天完成所有作業',            rarity: 'rare'     },
   { id: 'hw_days_10',    category: '完成',  icon: '🎖️', name: '毅力勇者',   desc: '累積10天完成所有作業',           rarity: 'uncommon' },
+  // ── 補救挑戰類 ──
+  { id: 'quest_first',      category: '完成',  icon: '⚔️', name: '重返戰場',   desc: '完成第一個補救挑戰',           rarity: 'uncommon' },
+  { id: 'quest_5',          category: '完成',  icon: '🛡️', name: '補救常勝軍', desc: '累積完成5個補救挑戰',          rarity: 'rare'     },
+  { id: 'comeback',         category: '完成',  icon: '🌈', name: '逆轉勝',     desc: '清除10項逾期進度',             rarity: 'rare'     },
   // ── 等級/連續達標類 ──
   { id: 'level_5',          category: '努力',  icon: '⭐', name: '嶄露頭角',   desc: '等級達到 5 級',                rarity: 'uncommon' },
   { id: 'level_10',         category: '努力',  icon: '🌠', name: '扶搖直上',   desc: '等級達到 10 級',               rarity: 'rare'     },

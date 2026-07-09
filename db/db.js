@@ -403,6 +403,32 @@ function openAndMigrate() {
     CREATE INDEX IF NOT EXISTS idx_daily_reward_user ON daily_reward_log(user_id);
   `);
 
+  // Migration 24: catch-up quests — snapshot of overdue item IDs at accept time;
+  // progress is measured against the snapshot (no penalty on expiry, 鼓勵導向)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS catchup_quests (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title         TEXT    NOT NULL,
+      target_count  INTEGER NOT NULL,
+      deadline_date TEXT    NOT NULL,
+      bonus_points  INTEGER NOT NULL DEFAULT 30,
+      bonus_xp      INTEGER NOT NULL DEFAULT 50,
+      status        TEXT    NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','expired')),
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      completed_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_catchup_quests_user ON catchup_quests(user_id);
+    CREATE TABLE IF NOT EXISTS catchup_quest_items (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id INTEGER NOT NULL REFERENCES catchup_quests(id) ON DELETE CASCADE,
+      kind     TEXT    NOT NULL CHECK (kind IN ('chapter','task')),
+      item_id  INTEGER NOT NULL,
+      UNIQUE(quest_id, kind, item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_catchup_quest_items_quest ON catchup_quest_items(quest_id);
+  `);
+
   return db;
 }
 
