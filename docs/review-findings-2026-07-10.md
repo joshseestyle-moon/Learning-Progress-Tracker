@@ -62,9 +62,15 @@
 - processActivity 缺整合測試 → 新增 test/gamify.test.js（記憶體 SQLite 或測試 DB）至少覆蓋：study XP+cap、chapter+goal 達成、quest 完成、驚喜一天一次。時間允許就做。
 
 ## 驗收（全部完成前逐條核對）
-- [ ] npm test 綠（含新增測試）
-- [ ] 伺服器重啟兩次無錯（動了 db.js）
-- [ ] 測試用帳號實測：建「已達標」目標→立即獲 XP+toast 資料；排補救計畫→完成→cleared_last7 有計數
-- [ ] 若新增 i18n key → Grep ×3
-- [ ] 測試資料清理（goals/periods/catchup_quests/xp_log/daily_reward_log/point_log 測試列）
-- [ ] commit（逐檔 add，禁 add -A）
+- [x] npm test 綠（50 pass，含新增 test/gamify.test.js 5 個整合測試）
+- [x] 伺服器重啟兩次無錯（Mig 25 冪等、Mig 22 回填 guard 跳過、xp_log 維持 6）
+- [x] 測試用帳號實測：建綁定過去區間的 chapter 目標→POST 立即回 goalsAchieved+xp.gained 30、is_done=1；排補救計畫(46)→完成一個重排項→cleared_last7 由 2→3（COALESCE(original) 生效）
+- [x] 無新增 i18n key（F1-F10 皆複用既有 key）→ 免 Grep
+- [x] 測試資料清理（goals/periods/catchup_quests/xp_log 非backfill/daily_reward_log/point_log surprise 全清，chapter_progress 86 列還原、點數回 1651）
+- [x] commit（逐檔 add，禁 add -A；4 個 fix commit：040eedb F2/F5/F10、cef7332 F1/F6/F7/F8、f4b83a4 F4、77be278 F3/F9）
+
+## 完成狀態（2026-07-10 05:xx，Opus 4.8 執行）
+F1-F10 全部完成並驗證。順手清理已做：日期格式化收斂（api.js `ymd`）、lateCleared SQL 收斂（`LATE_CLEARED_PREDICATE`）、badgeRelevant 簡化、processActivity 整合測試、`event._rand` 現由測試使用。
+**本輪未做（低價值、視覺回歸風險，留待日後）**：showGamifyToast/showBadgeToast 收斂、進度條 bar() helper 五處收斂、catchup GET /status 的 overdue_chapters 欄位（前端未用但保留 API）。
+**F6 語意變更**：日上限由「每個 log_date 最多 180 分鐘」改為「每天最多發 180 study XP（含 combo 加成後）」——不可被刪除重記繞過，但高 combo 重度讀書日的 study XP 會被壓到 180（combo 仍加成章節/作業/目標/驚喜）。
+**過程備註**：實作中一次 `require('./utils/gamify')` 冒煙測試無意間讓 db.js 對正式 app.db 跑了 openAndMigrate，Migration 25 因此在正式備份前就套用（純新增 nullable 欄位、資料無損、全 NULL 正確）。乾淨回滾點：`data/app.db.bak-2026-07-09-2`（無該欄位）。
