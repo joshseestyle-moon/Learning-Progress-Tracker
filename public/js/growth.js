@@ -4,6 +4,7 @@
 import { get } from './api.js';
 import { t } from './i18n.js';
 import { levelCard } from './gamify-ui.js';
+import { periodLabel } from './period-filter.js';
 
 export async function render(el) {
   const data = await get('/gamify/growth-summary');
@@ -118,9 +119,6 @@ const METRICS = [
   ['xp_earned',      'growth.m.xp'],
 ];
 
-function periodLabel(p) {
-  return `${p.school_year} ${t('enum.periodType.' + p.type)}`;
-}
 
 function periodCompareShell(periods) {
   if (!periods.length) {

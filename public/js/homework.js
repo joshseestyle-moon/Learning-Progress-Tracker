@@ -1,19 +1,27 @@
 import { get, post, patch, del, escHtml, fmtDate, today, ymd } from './api.js';
 import { t } from './i18n.js';
+import { initPeriodFilter } from './period-filter.js';
 
 let _el = null;
 let _subjects = [];
+let _scope = { mode: 'all' };
 
 export async function render(el) {
   _el = el;
   _subjects = await get('/subjects');
-  await refresh(el);
+  el.innerHTML = `<div id="hw-filter"></div><div id="hw-body"></div>`;
+  await initPeriodFilter(el.querySelector('#hw-filter'), scope => { _scope = scope; refresh(); });
 }
 
-async function refresh(el) {
-  const tasks = await get(`/daily-tasks?from=${offsetDate(-30)}&to=${offsetDate(30)}`);
-  el.innerHTML = buildPage(tasks);
-  attachAddEvent(el);
+async function refresh() {
+  // All scope: rolling ±30 days (current behaviour). Period scope: the period's range.
+  const range = _scope.mode === 'period'
+    ? { from: _scope.from, to: _scope.to }
+    : { from: offsetDate(-30), to: offsetDate(30) };
+  const tasks = await get(`/daily-tasks?from=${range.from}&to=${range.to}`);
+  const body = _el.querySelector('#hw-body');
+  body.innerHTML = buildPage(tasks);
+  attachAddEvent(body);
 }
 
 function offsetDate(days) {
@@ -174,19 +182,8 @@ function attachAddEvent(el) {
       partsInput.value = '1';
       titleInput.focus();
 
-      if (date === today()) {
-        const list  = el.querySelector('#hw-today-list');
-        const empty = list?.querySelector('#hw-today-empty');
-        if (empty) empty.remove();
-        if (list) {
-          const div = document.createElement('div');
-          div.innerHTML = taskBlock(task);
-          list.appendChild(div.firstElementChild);
-        }
-      } else {
-        // Re-fetch with range query (1 request) and re-render
-        await refresh(el);
-      }
+      // Re-fetch with the current scope (1 request) so added tasks respect it.
+      await refresh();
     } catch (e) {
       alert(t('alert.saveFailed', { msg: e.message }));
     } finally {

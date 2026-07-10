@@ -1,5 +1,6 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
 import { t } from './i18n.js';
+import { initPeriodFilter } from './period-filter.js';
 
 let subjects = [];
 
@@ -10,16 +11,25 @@ function TYPE_LABEL() {
   };
 }
 
+let _el;
+let _scope = { mode: 'all' };
+
 export async function render(el) {
+  _el = el;
   subjects = await get('/subjects');
-  await refresh(el);
+  el.innerHTML = `<div id="exam-filter"></div><div id="exam-body"></div>`;
+  await initPeriodFilter(el.querySelector('#exam-filter'), scope => { _scope = scope; refresh(); });
 }
 
-async function refresh(el) {
+async function refresh() {
   const [exams, chapters] = await Promise.all([get('/exams'), get('/chapters')]);
   const progressMap = buildProgressMap(chapters);
-  el.innerHTML = buildPage(exams, progressMap);
-  attachEvents(el, exams);
+  const scoped = _scope.mode === 'period'
+    ? exams.filter(e => e.exam_date >= _scope.from && e.exam_date <= _scope.to)
+    : exams;
+  const body = _el.querySelector('#exam-body');
+  body.innerHTML = buildPage(scoped, progressMap);
+  attachEvents(body, scoped);
 }
 
 function buildProgressMap(chapters) {
@@ -183,13 +193,13 @@ async function save(el, existing) {
   if (!body.title || !body.exam_date) return alert(t('alert.fillNameDate'));
   if (existing) await put('/exams/' + existing.id, body);
   else          await post('/exams', body);
-  await refresh(el);
+  await refresh();
 }
 
 async function deleteExam(el, id) {
   if (!confirm(t('confirm.delete'))) return;
   await del('/exams/' + id);
-  await refresh(el);
+  await refresh();
 }
 
 function attachEvents(el, exams) {
@@ -201,7 +211,7 @@ function attachEvents(el, exams) {
       const expired = exams.filter(e => !e.is_completed && e.days_left < 0);
       if (!confirm(t('confirm.clearExpired', { n: expired.length }))) return;
       await Promise.all(expired.map(e => put('/exams/' + e.id, { is_completed: true })));
-      await refresh(el);
+      await refresh();
     };
   }
   el.querySelectorAll('.exam-edit-btn').forEach(btn => {
@@ -214,7 +224,7 @@ function attachEvents(el, exams) {
     btn.onclick = async () => {
       const exam = exams.find(e => e.id === +btn.dataset.id);
       await put('/exams/' + exam.id, { is_completed: !exam.is_completed });
-      await refresh(el);
+      await refresh();
     };
   });
 }
