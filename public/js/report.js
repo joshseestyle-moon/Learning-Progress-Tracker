@@ -1,4 +1,4 @@
-import { get, escHtml, fmtDate, today, getUserName } from './api.js';
+import { get, escHtml, fmtDate, today, getUserName, getUserId } from './api.js';
 import { t } from './i18n.js';
 
 const GOAL_ICONS = { chapter: '📖', grade: '🏆', text: '✏️' };
@@ -124,6 +124,13 @@ async function generate(el) {
   }
   body.innerHTML = renderReport(data);
   el.querySelector('#report-print').disabled = false;
+
+  // Persist the child's self-reflection so it survives regenerate / reload.
+  const reflect = body.querySelector('.report-reflect');
+  if (reflect) {
+    const key = reflectKey(data.range);
+    reflect.addEventListener('input', () => localStorage.setItem(key, reflect.innerText.trim()));
+  }
 }
 
 function renderReport(d) {
@@ -155,7 +162,7 @@ function renderReport(d) {
     ${sectionGrades(d.grades)}
     ${sectionGoals(d.goals)}
     ${sectionBadges(d.badges)}
-    <div class="report-sign">${t('report.signature')}：______________________</div>
+    ${sectionReflection(d)}
     <div class="print-footer" style="margin-top:10px;"><span>${t('report.footer')}</span><span>${fmtDate(today())}</span></div>
   </div>`;
 }
@@ -261,6 +268,26 @@ function sectionGoals(goals) {
       </div>`).join('');
   }
   return `<div class="report-section"><div class="print-section-title">${t('report.sec.goals')}</div>${inner}</div>`;
+}
+
+// A data-driven encouragement line + an editable self-reflection the child
+// writes themselves (persisted per user+range in localStorage; printed as-is).
+function encourageLine(o) {
+  if (o.total_minutes === 0 && o.chapters_done === 0) return t('report.encourage.start');
+  return t('report.encourage', { hours: fmtMinutes(o.total_minutes), chapters: o.chapters_done });
+}
+
+function reflectKey(range) {
+  return `report-refl-${getUserId()}-${range.from}-${range.to}`;
+}
+
+function sectionReflection(d) {
+  const saved = escHtml(localStorage.getItem(reflectKey(d.range)) || '');
+  return `<div class="report-section">
+    <div class="print-section-title">${t('report.sec.reflection')}</div>
+    <div class="report-encourage">💪 ${encourageLine(d.overview)}</div>
+    <div class="report-reflect" contenteditable="true" data-placeholder="${escHtml(t('report.reflection.placeholder'))}">${saved}</div>
+  </div>`;
 }
 
 function sectionBadges(badges) {

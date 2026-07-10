@@ -207,7 +207,20 @@
 .report-badge-item .bi { font-size: 22px; }
 .report-badge-item .bn { font-size: 9px; color: #444; margin-top: 1px; line-height: 1.2; }
 .report-badge-item .bd { font-size: 8px; color: #999; }
-.report-sign { margin-top: 16px; font-size: 11px; color: #333; }
+.report-encourage { font-size: 12px; font-weight: 700; color: #b8860b; margin: 2px 0 6px; }
+.report-reflect {
+  min-height: 52px;
+  border: 1px dashed #bbb;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #333;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  outline: none;
+}
+.report-reflect:focus { border-color: #4f6ef7; }
+.report-reflect:empty::before { content: attr(data-placeholder); color: #bbb; }
 .report-empty { color: #aaa; font-size: 11px; padding: 4px 0; }
 
 /* 直式命名頁：只作用於報告本體，週計畫仍用預設橫式 @page */
@@ -217,4 +230,6 @@
   /* 覆寫既有 @media print 對 .main-content 的 297mm 橫式寬度 */
   body.report-print .main-content { width: 210mm !important; }
   .report-section { break-inside: avoid; margin-bottom: 10px; }
+  .report-reflect { min-height: 64px; }
+  .report-reflect:empty::before { content: ''; } /* don't print the prompt — leave blank lines for handwriting */
 }
