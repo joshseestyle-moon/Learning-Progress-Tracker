@@ -31,6 +31,7 @@ app.use('/api/periods',     require('./routes/periods'));
 app.use('/api/goals',       require('./routes/goals'));
 app.use('/api/gamify',      require('./routes/gamify'));
 app.use('/api/catchup',     require('./routes/catchup'));
+app.use('/api/report',      require('./routes/report'));
 
 // Backup: checkpoint WAL first so the downloaded file is complete
 app.get('/api/backup', (req, res) => {
