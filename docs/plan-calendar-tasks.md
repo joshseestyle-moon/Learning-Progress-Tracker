@@ -22,7 +22,8 @@
 4. i18n：改動或新增的 key，完成後 Grep 每 key 命中數 = 3（三語）。新增字串照本文件附的三語表。
 5. 日期欄位型別（決定要不要加 `'localtime'`）：`daily_tasks.task_date`、`assignments.due_date` 都是**裸日期字串**，直接比較，**不加** localtime。（本計畫的 SQL 都走既有端點，通常不需自己寫 SQL。）
 6. git 逐檔 `git add <路徑>`，**禁 add -A**。每個 Phase 完成即 commit。
-7. 驗證：改 UI 用 Playwright + 測試用帳號（id 7）；測後清理測試資料；重啟用 `啟動.bat`（PowerShell `& ".\啟動.bat"` run_in_background）。本計畫無 migration，重啟一次確認可服務即可。動 UI 一律亮/暗主題各看一次。
+7. 驗證：改 UI 用 Playwright + 測試用帳號（id 7）；測後清理測試資料；重啟用 `啟動.bat`（PowerShell `& ".\啟動.bat"` run_in_background）。Phase A2 動了後端，重啟一次確認可服務。動 UI 一律亮/暗主題各看一次。
+8. **卡關升級路徑（使用者已授權）**：符合 `rules/20-judgment.md` 第 1 節升級判準（同一問題兩種本質不同的方法都失敗）、第 4 節換路訊號、或遇到高風險/品味裁量時，**用 Agent 工具派 `model: "fable"` 的 general-purpose 顧問 agent**：prompt 附上「已知事實／已試方法／卡點」三段＋相關檔案路徑＋本計畫路徑，回報合約 ≤400 字。顧問意見仍解不了 → 停下來問使用者。不要在沒諮詢前把同一修法試第三次。
 
 ## 2. Phase A — 正名「作業(assignments)」為「事件／行程」
 
@@ -59,6 +60,20 @@
 - 行事曆日期詳情的 chip 顯示「事件」、新增鈕顯示「+ 新增事件」、彈窗表單為「事件名稱/日期」；儀表板卡片為「📅 近期事件」。三語各看一次。
 - i18n 改動 key Grep ×3。
 - Commit：`refactor: rename calendar assignments to events in UI (v3.8 Phase A)`
+
+## 2b. Phase A2 — 事件完成不再給 XP／驚喜（使用者已裁決）
+
+### 檔案
+- `utils/gamify.js`：刪 processActivity 直接 XP 區的 `else if (event.type === 'assignment') { grantOnce(XP_RULES.assignmentDone, ...) }` 分支；刪 surprise `qualifies` 裡的 `event.type === 'assignment'` 一項。
+- `utils/xp.js`：刪 `XP_RULES.assignmentDone`（移除後即無使用點）。
+- `test/xp.test.js`：刪 `assert.equal(XP_RULES.assignmentDone, 10)` 斷言。
+- `test/gamify.test.js`：把「assignment completion grants XP (F8)」測試改寫為反向斷言——完成 assignment 後 `r.xp.gained === 0`、`r.surprise === null`、xp_log 無 `assignment:%` 列。
+- **不要動** `routes/assignments.js` 的 `processActivity` 呼叫：完成事件仍需觸發 checkBadges（`first_assignment`/`assignments_20` 徽章仍以事件完成為條件），processActivity 對 assignment 事件會自然走到「無 XP、無驚喜、跑徽章」。gamify.js 開頭的事件形狀註解同步更新一行說明。
+
+### 驗收 A2
+- `npm test` 綠（含改寫後的測試）。
+- 手動：測試帳號完成一個事件 → 回應 `xp.gained===0`、無 surprise、`newBadges` 正常運作（若條件成立會發徽章）→ 測後還原該事件的 is_done 並清理徽章測試列（若有新發）。
+- Commit：`fix: completing calendar events no longer grants XP or surprise (v3.8 Phase A2)`
 
 ## 3. Phase B — 作業清單(daily_tasks) 單向顯示到行事曆
 
@@ -120,13 +135,13 @@
 - [ ] 測試帳號實測 A（正名）＋ B（作業上曆、勾選、跳轉），亮/暗主題
 - [ ] 所有改動/新增 i18n key Grep ×3
 - [ ] 測試資料清理、user7 lang 仍 zh-TW
-- [ ] 逐檔 commit（2 個：Phase A、Phase B）
+- [ ] 逐檔 commit（3 個：Phase A、Phase A2、Phase B）
 - [ ] 更新 `X:\class\CLAUDE.md` 進行中的工作段（標記 v3.8 完成）
 
 ## 5. 風險與備註
 
-### 決策點：事件完成也會給 XP（預設保留，使用者已知情）
-v3.6 review 修復（F8）時給 assignment 完成加了 `assignmentDone: 10` XP＋每日驚喜資格（utils/gamify.js、utils/xp.js）——當時 assignments 還被理解為作業。正名後，勾掉「去澎湖」也會得 10 XP。**預設保留**：鼓勵導向、金額小、零後端變更；「完成計畫好的事」本身也值得肯定。若使用者日後不想讓生活事件給 XP，改法是 utils/gamify.js 刪 `assignment` 的 XP 分支＋qualifies 裡的 `event.type === 'assignment'`（連動 test/gamify.test.js 的 assignment 測試與 XP_RULES 斷言）——**本輪不做**。
+### 已裁決：事件不給 XP（使用者 2026-07-10 決定，納入本輪 Phase A2）
+背景：v3.6 review 修復（F8）給 assignment 完成加了 XP＋驚喜資格——當時 assignments 還被理解為作業。正名後使用者裁決：**生活行程不給 XP**。實作見 Phase A2。已查證 xp_log 無任何 `assignment:%` 既存紀錄（測試列已清），無資料清理需求。
 - **不做的事**：不合併兩實體、不做「事件→作業清單頁」的反向顯示（資料調查顯示把事件塞進作業清單頁沒有意義）、不在行事曆新增/編輯作業。若日後使用者想要「行事曆也能新增作業」，再另議。
 - **顏色 fallback** 是本階段唯一容易漏的細節：daily_tasks 多半無 subject，格子 dot 與 badge 都要能容忍 `subject_color=null`。
 - 事件（assignments）目前無獨立管理頁，仍在行事曆內建立/刪除——正名後這個互動不變，只是文案正確了。日後若要獨立「事件」頁再另議。
