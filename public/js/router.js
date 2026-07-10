@@ -12,6 +12,7 @@ import { render as renderBadges }    from './badges.js';
 import { render as renderShop }      from './shop.js';
 import { render as renderGoals }     from './goals.js';
 import { render as renderGrowth }    from './growth.js';
+import { render as renderReport }    from './report.js';
 import { t } from './i18n.js';
 
 const routes = {
@@ -27,6 +28,7 @@ const routes = {
   shop:      { titleKey: 'nav.shop',      fn: renderShop      },
   goals:     { titleKey: 'nav.goals',     fn: renderGoals     },
   growth:    { titleKey: 'nav.growth',    fn: renderGrowth    },
+  report:    { titleKey: 'nav.report',    fn: renderReport    },
   subjects:  { titleKey: 'nav.subjects',  fn: renderSubjects  },
   print:     { titleKey: 'nav.print',     fn: renderPrint     },
 };
@@ -41,6 +43,8 @@ export function initRouter() {
   function route() {
     const hash = location.hash.slice(1) || 'dashboard';
     _currentHash = hash;
+    // Clear page-specific body classes (report.js re-adds its own on render).
+    document.body.classList.remove('report-print');
     const view = document.getElementById('view');
     const titleEl = document.getElementById('page-title');
 
