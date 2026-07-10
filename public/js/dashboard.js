@@ -15,9 +15,9 @@ export async function render(el) {
   const todayStr    = today();
   const tomorrowStr = tomorrow();
 
-  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup;
+  let timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup, recap;
   try {
-    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup] = await Promise.all([
+    [timetable, exams, scheduled, chapters, dailyTasks, stats, assignments, goals, gamify, catchup, recap] = await Promise.all([
       get('/timetable'),
       get('/exams?upcoming=5'),
       get('/chapters/scheduled'),
@@ -28,6 +28,7 @@ export async function render(el) {
       get('/goals'),
       get('/gamify/status'),
       get('/catchup/status'),
+      get('/report/weekly-recap'),
     ]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
@@ -87,6 +88,12 @@ export async function render(el) {
         <div class="card-title">${t('card.level')}</div>
         ${levelCard(gamify)}
       </div>
+
+      <!-- Weekly recap (hidden entirely when last week had no activity) -->
+      ${recap.hasActivity ? `<div class="card">
+        <div class="card-title">${t('recap.title')}</div>
+        ${recapCard(recap)}
+      </div>` : ''}
 
       <!-- Active goals -->
       <div class="card">
@@ -218,6 +225,30 @@ function studyStatsCard(stats) {
   return line(t('dash.studiedToday'), stats.today_minutes || 0, stats.daily_goal, dayReached ? 'var(--success)' : 'var(--accent)', dayReached)
     + line(t('dash.thisWeek'), stats.week_minutes || 0, stats.weekly_goal, weekReached ? 'var(--success)' : '#f59e0b', weekReached)
     + noGoal + streak;
+}
+
+function recapCard(recap) {
+  const s = recap.stats, p = recap.prevStats;
+  const hlValue = { goals: s.goals, chapters: s.chapters, minutes: s.minutes };
+  const headline = t('recap.headline.' + recap.highlight, { n: hlValue[recap.highlight] });
+  const items = [
+    ['minutes', 'recap.m.minutes'], ['active_days', 'recap.m.activeDays'],
+    ['chapters', 'recap.m.chapters'], ['tasks', 'recap.m.tasks'], ['xp', 'recap.m.xp'],
+  ];
+  const cells = items.map(([k, key]) => {
+    const delta = s[k] - (p[k] || 0);
+    // Encouragement-first: only surface a gain, never a shortfall.
+    const vs = delta > 0
+      ? `<div style="font-size:.66rem;color:var(--success);margin-top:1px;">${t('recap.vs', { n: delta })}</div>` : '';
+    return `<div style="text-align:center;flex:1;min-width:0;">
+      <div style="font-size:1.05rem;font-weight:800;">${s[k]}</div>
+      <div style="font-size:.66rem;color:var(--text2);">${t(key)}</div>
+      ${vs}
+    </div>`;
+  }).join('');
+  return `
+    <div style="font-size:.92rem;font-weight:700;color:var(--accent);margin-bottom:.6rem;">🎉 ${headline}</div>
+    <div style="display:flex;gap:.3rem;">${cells}</div>`;
 }
 
 function goalsCard(goals) {
