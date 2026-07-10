@@ -5,6 +5,12 @@ const path = require('path');
 // Initialize DB (creates schema on first run)
 const db = require('./db/db');
 
+// Weekly rotating snapshot into data/backups/ (never blocks startup on failure)
+const { performAutoBackup } = require('./utils/autoBackup');
+const { localToday } = require('./utils/streak');
+const _bk = performAutoBackup(db, path.dirname(path.resolve(process.env.DB_PATH || './data/app.db')), localToday());
+if (_bk.created) console.log('[autoBackup] created', _bk.file, _bk.pruned.length ? `(pruned ${_bk.pruned.length})` : '');
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
