@@ -73,8 +73,13 @@ router.get('/monthly', userCtx, (req, res) => {
 
 // All-time summary
 router.get('/summary', userCtx, (req, res) => {
-  const total = db.prepare('SELECT COALESCE(SUM(minutes),0) AS m FROM study_log WHERE user_id = ?').get(req.userId).m;
-  const activeDays = db.prepare('SELECT COUNT(DISTINCT log_date) AS d FROM study_log WHERE user_id = ?').get(req.userId).d;
+  // Optional period scope: both from & to must be given, else the all-time totals.
+  const { from, to } = req.query;
+  let where = 'WHERE user_id = ?';
+  const params = [req.userId];
+  if (from && to) { where += ' AND log_date >= ? AND log_date <= ?'; params.push(from, to); }
+  const total = db.prepare(`SELECT COALESCE(SUM(minutes),0) AS m FROM study_log ${where}`).get(...params).m;
+  const activeDays = db.prepare(`SELECT COUNT(DISTINCT log_date) AS d FROM study_log ${where}`).get(...params).d;
   res.json({
     total_minutes: total,
     active_days: activeDays,

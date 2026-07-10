@@ -1,5 +1,6 @@
 import { get, post, put, del, escHtml, today, ymd, getUserId, fmtMonth } from './api.js';
 import { t } from './i18n.js';
+import { initPeriodFilter } from './period-filter.js';
 
 let subjects = [];
 let allChapters = [];
@@ -10,23 +11,32 @@ let timerRunning = false;
 let timerSubjectId = null;
 let timerChapterId = null;
 
+let _el;
+let _scope = { mode: 'all' };
+
 export async function render(el) {
+  _el = el;
   try {
     [subjects, allChapters] = await Promise.all([get('/subjects'), get('/chapters')]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
-  await refresh(el);
+  el.innerHTML = `<div id="sl-filter"></div><div id="sl-body"></div>`;
+  await initPeriodFilter(el.querySelector('#sl-filter'), scope => { _scope = scope; refresh(); });
 }
 
-async function refresh(el) {
+async function refresh() {
+  // Period scope narrows the record LIST and the 學習總覽 summary only.
+  // The 7-day chart, heatmap and monthly trend are fixed-window views and the
+  // streak is a "right now" property — all stay all-time regardless of scope.
+  const q = _scope.mode === 'period' ? `?from=${_scope.from}&to=${_scope.to}` : '';
   const [logs, weekly, heatmap, monthly, summary, stats] = await Promise.all([
-    get('/studylog'),
+    get('/studylog' + q),
     get('/studylog/weekly'),
     get('/studylog/heatmap?days=364'),
     get('/studylog/monthly?months=6'),
-    get('/studylog/summary'),
+    get('/studylog/summary' + q),
     get('/studylog/dashboard-stats'),
   ]);
   summary.streak = stats.current_streak;
@@ -34,11 +44,12 @@ async function refresh(el) {
     daily_goal_minutes:  stats.daily_goal  || 0,
     weekly_goal_minutes: stats.weekly_goal || 0,
   };
-  el.innerHTML = buildPage(logs, weekly, summary);
-  attachEvents(el, logs);
-  renderChart(el, weekly);
-  renderHeatmap(el, heatmap);
-  renderMonthly(el, monthly);
+  const body = _el.querySelector('#sl-body');
+  body.innerHTML = buildPage(logs, weekly, summary);
+  attachEvents(body, logs);
+  renderChart(body, weekly);
+  renderHeatmap(body, heatmap);
+  renderMonthly(body, monthly);
 }
 
 function chaptersForSubject(subjectId) {
@@ -370,7 +381,7 @@ function attachEvents(el, logs) {
     };
     if (!body.minutes || body.minutes < 1) return alert(t('alert.enterMinutes'));
     await post('/studylog', body);
-    await refresh(el);
+    await refresh();
   };
 
   // Stopwatch
@@ -421,7 +432,7 @@ function attachEvents(el, logs) {
     toggleBtn.textContent = t('sw.start');
     display.textContent = '00:00:00';
     saveBtn.disabled = true;
-    await refresh(el);
+    await refresh();
   };
 
   // Delete
@@ -429,7 +440,7 @@ function attachEvents(el, logs) {
     btn.onclick = async () => {
       if (!confirm(t('confirm.delete'))) return;
       await del('/studylog/' + btn.dataset.id);
-      await refresh(el);
+      await refresh();
     };
   });
 }
