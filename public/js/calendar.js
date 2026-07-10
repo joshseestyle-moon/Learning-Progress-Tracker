@@ -1,4 +1,4 @@
-import { get, post, put, del, escHtml, fmtDate, today } from './api.js';
+import { get, post, put, del, patch, escHtml, fmtDate, today } from './api.js';
 import { t, getLang } from './i18n.js';
 
 let currentYear, currentMonth;
@@ -13,10 +13,13 @@ export async function render(el) {
 }
 
 async function renderMonth(el) {
-  const [assignments, exams, scheduled] = await Promise.all([
+  const mm = String(currentMonth + 1).padStart(2, '0');
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const [assignments, exams, scheduled, tasks] = await Promise.all([
     get('/assignments'),
     get('/exams'),
     get('/chapters/scheduled'),
+    get(`/daily-tasks?from=${currentYear}-${mm}-01&to=${currentYear}-${mm}-${String(daysInMonth).padStart(2, '0')}`),
   ]);
 
   const byDate = {};
@@ -34,6 +37,9 @@ async function renderMonth(el) {
       _type: 'chapter',
       title: `${t(s.type === 'preview' ? 'chip.preview' : 'chip.review')}：${s.chapter_title}`,
     });
+  }
+  for (const tk of tasks) {
+    (byDate[tk.task_date] = byDate[tk.task_date] || []).push({ ...tk, _type: 'task' });
   }
 
   const firstDay = new Date(currentYear, currentMonth, 1);
@@ -57,9 +63,13 @@ async function renderMonth(el) {
       <div class="cal-cell" data-date="${dateStr}">
         <div class="cal-date ${isToday?'today':''}">${d}</div>
         ${events.slice(0,3).map(ev => {
-          const icon  = ev._type === 'exam' ? '⏰' : ev._type === 'chapter' ? (ev.type === 'preview' ? '📖' : '✏️') : '📝';
-          const label = `${icon} ${ev.subject_name}・${ev._type === 'chapter' ? ev.chapter_title : ev.title}`;
-          return `<div class="cal-dot" style="background:${ev.subject_color}" title="${escHtml(label)}">${escHtml(label)}</div>`;
+          const icon = ev._type === 'exam' ? '⏰'
+            : ev._type === 'chapter' ? (ev.type === 'preview' ? '📖' : '✏️')
+            : ev._type === 'task' ? '📋' : '📝';
+          const name  = ev._type === 'chapter' ? ev.chapter_title : ev.title;
+          const label = ev.subject_name && name ? `${icon} ${ev.subject_name}・${name}` : `${icon} ${ev.subject_name || name || ''}`;
+          const color = ev.subject_color || '#94a3b8';
+          return `<div class="cal-dot" style="background:${color}" title="${escHtml(label)}">${escHtml(label)}</div>`;
         }).join('')}
         ${events.length > 3 ? `<div class="text-xs text-muted">${t('cal.moreEvents', { n: events.length-3 })}</div>` : ''}
       </div>`;
@@ -106,21 +116,38 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
         <div class="card-title" style="margin:0;">${fmtDate(date)}</div>
         <button class="btn btn-primary btn-sm" id="cal-add-btn">${t('cal.addAssignment')}</button>
       </div>
-      ${events.length ? events.map(ev => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);">
-          <div>
-            <span class="badge" style="background:${ev.subject_color};margin-right:.4rem">${escHtml(ev.subject_name)}</span>
-            ${ ev._type === 'exam'    ? `<span class="chip">${t('chip.exam')}</span>`
-             : ev._type === 'chapter' ? `<span class="chip" style="color:var(--accent)">${ev.type==='preview' ? t('chip.preview') : t('chip.review')}</span>`
-             : `<span class="chip">${t('chip.assignment')}</span>`}
-            <span style="font-size:.9rem;margin-left:.4rem;">${escHtml(ev.title)}</span>
-          </div>
-          ${ev._type === 'assignment' ? `
-            <div style="display:flex;gap:.5rem;">
+      ${events.length ? events.map(ev => {
+        const badge = ev.subject_name
+          ? `<span class="badge" style="background:${ev.subject_color || '#94a3b8'};margin-right:.4rem">${escHtml(ev.subject_name)}</span>` : '';
+        const chip = ev._type === 'exam'    ? `<span class="chip">${t('chip.exam')}</span>`
+                   : ev._type === 'chapter' ? `<span class="chip" style="color:var(--accent)">${ev.type==='preview' ? t('chip.preview') : t('chip.review')}</span>`
+                   : ev._type === 'task'    ? `<span class="chip">${t('chip.task')}</span>`
+                   : `<span class="chip">${t('chip.assignment')}</span>`;
+        const parts = ev.parts || [];
+        const doneParts = parts.filter(p => p.is_done).length;
+        const taskDone = ev.is_done || (parts.length > 0 && doneParts === parts.length);
+        const progress = ev._type === 'task' && parts.length > 1
+          ? ` <span style="color:var(--text3);font-size:.8rem;">${doneParts}/${parts.length}</span>` : '';
+        const titleStyle = ev._type === 'task' && taskDone ? 'text-decoration:line-through;color:var(--text3);' : '';
+        const actions = ev._type === 'assignment' ? `
+            <div style="display:flex;gap:.5rem;flex-shrink:0;">
               <button class="btn btn-ghost btn-sm" onclick="toggleAssignment(${ev.id}, ${ev.is_done})">${ev.is_done ? t('btn.undone') : t('btn.done')}</button>
               <button class="btn btn-danger btn-sm" onclick="deleteAssignment(${ev.id})">✕</button>
-            </div>` : ''}
-        </div>`).join('') : `<div class="text-muted text-sm">${t('cal.noEvents')}</div>`}
+            </div>`
+          : ev._type === 'task' ? `
+            <div style="display:flex;gap:.4rem;flex-shrink:0;align-items:center;">
+              <button class="btn btn-ghost btn-sm" onclick="calToggleTask(${ev.id}, ${taskDone ? 1 : 0})">${taskDone ? t('btn.undone') : t('btn.done')}</button>
+              <button class="btn btn-ghost btn-sm" onclick="navigate('homework')">${t('cal.goToHomework')}</button>
+            </div>` : '';
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);gap:.5rem;">
+          <div style="min-width:0;">
+            ${badge}${chip}
+            <span style="font-size:.9rem;margin-left:.4rem;${titleStyle}">${escHtml(ev.title || '')}${progress}</span>
+          </div>
+          ${actions}
+        </div>`;
+      }).join('') : `<div class="text-muted text-sm">${t('cal.noEvents')}</div>`}
     </div>`;
 
   detail.querySelector('#cal-add-btn').onclick = () => {
@@ -135,6 +162,10 @@ function showDetail(el, date, events, assignments, exams, scheduled) {
   window.toggleAssignment = async (id, isDone) => {
     const a = assignments.find(x => x.id === id);
     await put('/assignments/' + id, { ...a, is_done: !isDone });
+    await renderMonth(el);
+  };
+  window.calToggleTask = async (id, isDone) => {
+    await patch('/daily-tasks/' + id, { is_done: !isDone });
     await renderMonth(el);
   };
   window.deleteAssignment = async (id) => {
