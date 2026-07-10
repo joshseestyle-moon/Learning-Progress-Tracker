@@ -70,13 +70,14 @@ test('backdated study earns no combo multiplier (F7)', () => {
   assert.equal(db.prepare("SELECT delta FROM xp_log WHERE reason = ?").get('study:' + id).delta, 50);
 });
 
-test('assignment completion grants XP (F8)', () => {
+test('completing a calendar event grants NO XP and NO surprise (v3.8)', () => {
   const { uid, sid } = newUser();
   const aid = db.prepare('INSERT INTO assignments (user_id, subject_id, title, due_date) VALUES (?,?,?,?)')
     .run(uid, sid, 'A', localToday()).lastInsertRowid;
-  const r = processActivity(uid, { type: 'assignment', id: aid, _rand: () => 0.99 });
-  assert.equal(r.xp.gained >= 10, true);
-  assert.equal(db.prepare("SELECT delta FROM xp_log WHERE reason = ?").get('assignment:' + aid).delta, 10);
+  const r = processActivity(uid, { type: 'assignment', id: aid, _rand: () => 0.0 });
+  assert.equal(r.xp.gained, 0, 'events grant no XP');
+  assert.equal(r.surprise, null, 'events do not roll the daily surprise');
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM xp_log WHERE user_id = ? AND reason LIKE 'assignment:%'").get(uid).c, 0);
 });
 
 test('a goal already satisfied at creation is awarded immediately (F1)', () => {

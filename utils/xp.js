@@ -11,7 +11,6 @@ const XP_RULES = {
   taskPart: 3,
   taskComplete: 5, // extra on top of the last part's XP
   chapterDone: 15,
-  assignmentDone: 10,
   goal: { short: 30, mid: 60, long: 100 },
   questDefault: 50,
 };

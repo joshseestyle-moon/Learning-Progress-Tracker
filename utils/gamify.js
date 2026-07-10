@@ -7,7 +7,9 @@
 //   { type: 'study', id, logDate, minutes }            — study_log inserted
 //   { type: 'chapter', progressId }                    — a chapter session became done
 //   { type: 'task', taskId, partNums, taskDone }       — daily-task parts marked done
-//   { type: 'assignment', id }                         — an assignment became done
+//   { type: 'assignment', id }                         — a calendar event became done
+//        (events grant NO XP and NO surprise — they only run the badge check;
+//         the assignment-based badges still count completed events)
 //   { type: 'grade', id }                              — a grade was recorded
 //   { type: 'goal', goalId }                           — a text goal was manually completed
 //
@@ -121,8 +123,6 @@ function processActivity(userId, event) {
     } else if (event.type === 'task') {
       for (const n of event.partNums || []) grantOnce(XP_RULES.taskPart, `task:${event.taskId}:${n}`);
       if (event.taskDone) grantOnce(XP_RULES.taskComplete, `task:${event.taskId}:done`);
-    } else if (event.type === 'assignment') {
-      grantOnce(XP_RULES.assignmentDone, 'assignment:' + event.id);
     } else if (event.type === 'goal') {
       const g = db.prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?').get(event.goalId, userId);
       if (g && g.is_done) grantOnce(XP_RULES.goal[g.horizon] || XP_RULES.goal.short, 'goal:' + g.id);
@@ -132,8 +132,7 @@ function processActivity(userId, event) {
     const qualifies =
       (event.type === 'study' && event.minutes > 0) ||
       event.type === 'chapter' ||
-      (event.type === 'task' && event.taskDone) ||
-      event.type === 'assignment';
+      (event.type === 'task' && event.taskDone);
     if (qualifies) {
       const roll = rollSurpriseTier(event._rand); // _rand injectable for tests
       const pts = Math.round(roll.points * mult);

@@ -71,6 +71,5 @@ test('rollSurpriseTier: weights sum to 100', () => {
 test('XP_RULES: expected amounts', () => {
   assert.equal(XP_RULES.studyPerMinute, 1);
   assert.equal(XP_RULES.studyDailyCap, 180);
-  assert.equal(XP_RULES.assignmentDone, 10);
   assert.deepEqual(XP_RULES.goal, { short: 30, mid: 60, long: 100 });
 });
