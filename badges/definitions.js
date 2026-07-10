@@ -10,8 +10,8 @@ module.exports = [
   { id: 'hours_50',         category: '努力',  icon: '🎯', name: '努力不懈',   desc: '累積讀書達50小時',             rarity: 'uncommon' },
   { id: 'hours_100',        category: '努力',  icon: '🎓', name: '百時學者',   desc: '累積讀書達100小時',            rarity: 'rare'     },
   // ── 完成類 ──
-  { id: 'first_assignment', category: '完成',  icon: '✅', name: '責任達人',   desc: '完成第一份作業',               rarity: 'common'   },
-  { id: 'assignments_20',   category: '完成',  icon: '🏅', name: '作業英雄',   desc: '累積完成20份作業',             rarity: 'uncommon' },
+  { id: 'first_assignment', category: '完成',  icon: '✅', name: '責任達人',   desc: '完成第一個行事曆事件',         rarity: 'common'   },
+  { id: 'assignments_20',   category: '完成',  icon: '🏅', name: '行動英雄',   desc: '累積完成20個事件',             rarity: 'uncommon' },
   { id: 'first_chapter',    category: '完成',  icon: '📖', name: '初探知識',   desc: '完成第一個章節的預習或複習',   rarity: 'common'   },
   { id: 'chapters_10',      category: '完成',  icon: '🗺️', name: '知識探索者', desc: '累積完成10個章節進度',         rarity: 'uncommon' },
   { id: 'subject_complete', category: '完成',  icon: '🏆', name: '科目征服者', desc: '完成某科所有章節的預習',       rarity: 'rare'     },
