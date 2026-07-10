@@ -28,7 +28,8 @@
 
 ### 檔案
 - `public/js/i18n.js`（只改顯示值）
-- 檢查 `public/js/dashboard.js` 的 `assignmentDueCard`（第 287 起）與 `public/js/calendar.js` 內是否有**硬寫**的「作業」字樣（非透過 t()）——若有一併改為事件語意。
+- `badges/definitions.js`（兩個徽章的 name/desc，見下）
+- ~~檢查 dashboard/calendar 有無寫死「作業」~~ **已查證（2026-07-10）**：`assignmentDueCard`（dashboard.js:287-302）與 calendar.js 全部走 t()，無寫死字串；倒數文案（「X 天後/今天」）對事件同樣通順，**無需動**。
 
 ### i18n 顯示值改動（三語，key 名不變）
 | key | 新值 zh-TW | 新值 en | 新值 ja |
@@ -41,13 +42,20 @@
 | `label.dueDate` | 日期 | Date | 日付 |
 | `card.assignmentDue` | 📅 近期事件 | 📅 Upcoming Events | 📅 近日の予定 |
 | `dash.noAssignmentDue` | 近期沒有安排事件 | No upcoming events | 近日の予定はありません |
+| `confirm.deleteSubject` | 刪除科目會同時刪除所有相關章節、事件、考試等資料，確定嗎？ | Deleting a subject also removes all related chapters, events, exams, etc. Are you sure? | 科目を削除すると関連するすべての章、予定、試験等も削除されます。よろしいですか？ |
 
 - `confirm.deleteAssignment`（「確定刪除？」等）是通用字，**不用改**。
-- `label.dueDate` 也被別處用到嗎？→ Grep 確認只有 calendar 事件表單用它；若別處（如考試）也用，改為中性「日期」不影響語意，仍可接受；若有專屬「截止」語意的他處使用，則另開一個 key 給事件用、原 key 留給截止語意。**Opus 先 Grep 確認 `label.dueDate` 的所有使用點再決定。**
-- `dashboard.js` `assignmentDueCard`：卡片標題已由 `card.assignmentDue` 控制。檢查函式內是否有寫死的「作業/還剩 X 天要交」類字串；「還剩 N 天」對事件同樣通順，多半只需確認無寫死「作業」二字。
+- `label.dueDate` **已查證（2026-07-10）**：全 repo 只有 calendar.js:162 使用 → 直接改值為「日期」，無其他使用點，不需開新 key。
+
+### 徽章文案正名（badges/definitions.js，只改 name/desc，**id/條件/icon/rarity 不動**）
+`first_assignment` 與 `assignments_20` 的判定條件綁在 assignments 表（badges/checker.js 的 doneAssignments），正名後它們實際獎勵的是「完成事件」，但文案寫「作業」會變成：孩子勾掉「去澎湖」跳出「完成第一份作業」徽章——不通。改為：
+- `first_assignment`：name `責任達人`（保留）、desc `完成第一個行事曆事件`
+- `assignments_20`：name `行動英雄`（原「作業英雄」）、desc `累積完成20個事件`
+已得徽章按 id 關聯、顯示時查 definitions，改名對已獲得的徽章安全。徽章名稱本來就只有中文（definitions.js 不走 i18n，既有設計），維持。**名稱屬品味，使用者可改**——動工前如使用者有偏好以其為準。
 
 ### 驗收 A
 - Grep 全 `public/js`：確認提到 assignments 的 user-facing 字串都已是「事件」語意；「作業」二字只剩下 daily_tasks/homework 相關（`nav.homework`=作業清單、`card.todayHomework`=今日作業、`chip.task`=作業 等）。
+- `badges/definitions.js`：`first_assignment`/`assignments_20` 的 desc 不再含「作業」；「我的徽章」頁該兩枚徽章顯示新文案（測試帳號目視一次）。
 - 行事曆日期詳情的 chip 顯示「事件」、新增鈕顯示「+ 新增事件」、彈窗表單為「事件名稱/日期」；儀表板卡片為「📅 近期事件」。三語各看一次。
 - i18n 改動 key Grep ×3。
 - Commit：`refactor: rename calendar assignments to events in UI (v3.8 Phase A)`
@@ -59,13 +67,18 @@
 - `public/js/i18n.js`（2 個新 key）
 
 ### calendar.js 改動
-1. **抓資料**：`renderMonth` 的 `Promise.all` 增加當月作業查詢。當月範圍用本地日期字串計算（勿用 toISOString）：
+1. **抓資料**：`renderMonth` 的 `Promise.all` 增加當月作業查詢。注意：現有程式的 `lastDay` 在 Promise.all **之後**才計算（calendar.js:39-42），月份天數要先自行算好。確切寫法（勿用 toISOString）：
    ```js
-   const first = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-01`;
-   const last  = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
-   // 注意 lastDay 目前在 Promise.all 之後才算；把 lastDay 的計算移到 fetch 之前，或直接用 new Date(currentYear,currentMonth+1,0).getDate()
-   const tasks = await get(`/daily-tasks?from=${first}&to=${last}`);
+   const mm = String(currentMonth + 1).padStart(2, '0');
+   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+   const [assignments, exams, scheduled, tasks] = await Promise.all([
+     get('/assignments'),
+     get('/exams'),
+     get('/chapters/scheduled'),
+     get(`/daily-tasks?from=${currentYear}-${mm}-01&to=${currentYear}-${mm}-${String(daysInMonth).padStart(2, '0')}`),
+   ]);
    ```
+   （後端 range 查詢要求 from、to **皆為**合法日期，缺一回 400——上式恆兩者皆給。回傳已含 parts 與 subject_name/color，2026-07-10 查證於 routes/daily-tasks.js withParts。）
 2. **併入 byDate**：`_type:'task'`，帶 `id, title, subject_name, subject_color, is_done, parts, task_date`。
    ```js
    for (const tk of tasks) (byDate[tk.task_date] = byDate[tk.task_date] || []).push({ ...tk, _type:'task' });
@@ -111,6 +124,9 @@
 - [ ] 更新 `X:\class\CLAUDE.md` 進行中的工作段（標記 v3.8 完成）
 
 ## 5. 風險與備註
+
+### 決策點：事件完成也會給 XP（預設保留，使用者已知情）
+v3.6 review 修復（F8）時給 assignment 完成加了 `assignmentDone: 10` XP＋每日驚喜資格（utils/gamify.js、utils/xp.js）——當時 assignments 還被理解為作業。正名後，勾掉「去澎湖」也會得 10 XP。**預設保留**：鼓勵導向、金額小、零後端變更；「完成計畫好的事」本身也值得肯定。若使用者日後不想讓生活事件給 XP，改法是 utils/gamify.js 刪 `assignment` 的 XP 分支＋qualifies 裡的 `event.type === 'assignment'`（連動 test/gamify.test.js 的 assignment 測試與 XP_RULES 斷言）——**本輪不做**。
 - **不做的事**：不合併兩實體、不做「事件→作業清單頁」的反向顯示（資料調查顯示把事件塞進作業清單頁沒有意義）、不在行事曆新增/編輯作業。若日後使用者想要「行事曆也能新增作業」，再另議。
 - **顏色 fallback** 是本階段唯一容易漏的細節：daily_tasks 多半無 subject，格子 dot 與 badge 都要能容忍 `subject_color=null`。
 - 事件（assignments）目前無獨立管理頁，仍在行事曆內建立/刪除——正名後這個互動不變，只是文案正確了。日後若要獨立「事件」頁再另議。
