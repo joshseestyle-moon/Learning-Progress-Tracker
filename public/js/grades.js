@@ -1,26 +1,41 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
 import { t } from './i18n.js';
+import { initPeriodFilter } from './period-filter.js';
 
 let subjects = [];
 let exams = [];
 let currentSubjectFilter = '';
 
+let _el;
+let _scope = { mode: 'all' };
+let _gen = 0;
+
 export async function render(el) {
+  _el = el;
   try {
     [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
-  await refresh(el);
+  el.innerHTML = `<div id="gr-period-filter"></div><div id="gr-body"></div>`;
+  await initPeriodFilter(el.querySelector('#gr-period-filter'), scope => { _scope = scope; refresh(); });
 }
 
-async function refresh(el) {
+async function refresh() {
+  const gen = ++_gen;
   const url = currentSubjectFilter ? `/grades?subject_id=${currentSubjectFilter}` : '/grades';
   const grades = await get(url);
-  el.innerHTML = buildPage(grades);
-  attachEvents(el, grades);
-  renderChart(el, grades);
+  // Period scope narrows both the table and the trend chart — the whole page is
+  // one dataset (exam_date is a bare date column, compared directly).
+  const scoped = _scope.mode === 'period'
+    ? grades.filter(g => g.exam_date >= _scope.from && g.exam_date <= _scope.to)
+    : grades;
+  const body = _el.querySelector('#gr-body');
+  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
+  body.innerHTML = buildPage(scoped);
+  attachEvents(body, scoped);
+  renderChart(body, scoped);
 }
 
 function buildPage(grades) {
@@ -173,13 +188,13 @@ async function save(el, existing) {
   if (!body.exam_name || !body.exam_date || isNaN(body.score)) return alert(t('alert.fillRequired'));
   if (existing) await put('/grades/' + existing.id, body);
   else          await post('/grades', body);
-  await refresh(el);
+  await refresh();
 }
 
 async function deleteGrade(el, id) {
   if (!confirm(t('confirm.delete'))) return;
   await del('/grades/' + id);
-  await refresh(el);
+  await refresh();
 }
 
 function renderChart(el, grades) {
@@ -224,7 +239,7 @@ function renderChart(el, grades) {
 function attachEvents(el, grades) {
   el.querySelector('#gr-filter').onchange = async (e) => {
     currentSubjectFilter = e.target.value;
-    await refresh(el);
+    await refresh();
   };
   el.querySelector('#gr-add-btn').onclick = () => openModal(el, null);
   el.querySelectorAll('.gr-edit-btn').forEach(btn => {
