@@ -19,7 +19,8 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 - 系統全貌別自己掃：`SYSTEM_DOC.md` / `TECH_SPEC.md` 有現成文件，或派 Explore。
 
 ## 進行中的工作
-- 工作分支：`dev-2026-07-08`（所有異動在此分支，勿直接動 main）。
+- 工作分支：`dev-2026-07-11`（v3.9 於此分支；v3.8 及更早已合回 main）。所有異動在 dev 分支，勿直接動 main。
+- **v3.9 已完成並驗證**（規劃 `docs\plan-period-scope.md`）：四個明細頁（考試倒數／作業清單／讀書進度／讀書時間）可依學習區間過濾，避免學期交替後舊資料堆積。共用元件 `public\js\period-filter.js`（`initPeriodFilter`/`periodLabel`/`localD`，chips 選擇存 localStorage `periodScope`，預設今日所在區間、否則全部）。Phase A（3502ae5）exams＋homework＋growth 改用共用元件；Phase B（e3a493f）studylog 列表＋學習總覽 scope（`/studylog/summary` 加可選 from/to；近7天圖／熱力圖／月趨勢／streak 維持全量）；Phase C（033e105）chapters 推導式歸屬（`localD(created_at)∈區間` 或任一 review `scheduled_date∈區間`，跨區間複習故意保留；`ch.emptyPeriod` 空狀態）。**無 migration**。homework「全部」語意＝滾動 ±30 天視窗（非字面全部）。
 - 飛輪升級計畫：`docs\plan-flywheel.md` **五階段全部完成並驗證**（P1/P2：6f8cda3、b3bb93f；P3 XP/combo/驚喜 Mig 22-23：f0d16e9；P4 補救引擎 Mig 24：57b580e；P5 成長頁＋飛輪）。2026-07-10 另完成 code-review 全修（F1-F10，見 docs\review-findings-2026-07-10.md）。分支尚未合回 main，合併前建議使用者實際使用幾天。
 - **v3.8 已完成並驗證**（規劃 `docs\plan-calendar-tasks.md`，Opus 實作）：行事曆的 assignments **正名為「事件」**（純 i18n 值＋2 枚徽章文案，內部識別名/表/路由不動；Phase A e79182d）；**事件完成不再給 XP／驚喜**（Phase A2 9c7bf0f，routes/assignments.js 的 processActivity 呼叫保留供徽章）；**作業清單 daily_tasks 單向顯示到行事曆**（Phase B 681e13f，月曆 📋、日期詳情快速勾選＋前往作業清單，subject 可為 null 有色彩 fallback）。背景：資料調查發現 assignments 被兩個孩子當「事件」用（非作業）。已順手修正邦正 assignment id2 的 2126→2026 年 due_date。
 - **v3.7 已完成並驗證**（規劃 `docs\plan-report.md`，Opus 實作）：Phase A 啟動時每 7 天自動備份到 `data\backups\`（`utils\autoBackup.js`，VACUUM INTO、保留 8 份、失敗不擋啟動）；Phase B 報告 API（`routes\report.js` 的 `/summary`、`/weekly-recap`，純函式 `utils\reportRange.js`、`recapHighlight.js`）；Phase C 學習歷程報告頁（`public\js\report.js`，A4 直式可列印，named `@page reportPage` 與週計畫橫式並存，報告本體恆白底）；Phase D 儀表板週回顧卡（無活動則整卡隱藏）。無 migration。**列印分頁效果建議人工過目一次**（named page 相容性，見 plan-report.md 風險備忘）。
