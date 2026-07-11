@@ -13,6 +13,7 @@ function TYPE_LABEL() {
 
 let _el;
 let _scope = { mode: 'all' };
+let _gen = 0;
 
 export async function render(el) {
   _el = el;
@@ -22,12 +23,14 @@ export async function render(el) {
 }
 
 async function refresh() {
+  const gen = ++_gen;
   const [exams, chapters] = await Promise.all([get('/exams'), get('/chapters')]);
   const progressMap = buildProgressMap(chapters);
   const scoped = _scope.mode === 'period'
     ? exams.filter(e => e.exam_date >= _scope.from && e.exam_date <= _scope.to)
     : exams;
   const body = _el.querySelector('#exam-body');
+  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
   body.innerHTML = buildPage(scoped, progressMap);
   attachEvents(body, scoped);
 }

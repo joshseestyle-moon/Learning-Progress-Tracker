@@ -5,6 +5,7 @@ import { initPeriodFilter, localD } from './period-filter.js';
 let subjects = [];
 let _el;
 let _scope = { mode: 'all' };
+let _gen = 0;
 
 export async function render(el) {
   _el = el;
@@ -31,6 +32,7 @@ function inScope(c) {
 }
 
 async function refresh() {
+  const gen = ++_gen;
   const [chapters, timeByChapter] = await Promise.all([
     get('/chapters'),
     get('/studylog/by-chapter'),
@@ -39,6 +41,7 @@ async function refresh() {
   for (const t of timeByChapter) timeMap[t.chapter_id] = t.total_minutes;
   const scoped = chapters.filter(inScope);
   const body = _el.querySelector('#ch-body');
+  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
   body.innerHTML = buildPage(scoped, timeMap, chapters.length);
   attachEvents(_el, scoped);
 }

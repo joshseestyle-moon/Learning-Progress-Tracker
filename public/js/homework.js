@@ -5,6 +5,7 @@ import { initPeriodFilter } from './period-filter.js';
 let _el = null;
 let _subjects = [];
 let _scope = { mode: 'all' };
+let _gen = 0;
 
 export async function render(el) {
   _el = el;
@@ -14,12 +15,14 @@ export async function render(el) {
 }
 
 async function refresh() {
+  const gen = ++_gen;
   // All scope: rolling ±30 days (current behaviour). Period scope: the period's range.
   const range = _scope.mode === 'period'
     ? { from: _scope.from, to: _scope.to }
     : { from: offsetDate(-30), to: offsetDate(30) };
   const tasks = await get(`/daily-tasks?from=${range.from}&to=${range.to}`);
   const body = _el.querySelector('#hw-body');
+  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
   body.innerHTML = buildPage(tasks);
   attachAddEvent(body);
 }

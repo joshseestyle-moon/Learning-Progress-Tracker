@@ -13,6 +13,7 @@ let timerChapterId = null;
 
 let _el;
 let _scope = { mode: 'all' };
+let _gen = 0;
 
 export async function render(el) {
   _el = el;
@@ -27,6 +28,7 @@ export async function render(el) {
 }
 
 async function refresh() {
+  const gen = ++_gen;
   // Period scope narrows the record LIST and the 學習總覽 summary only.
   // The 7-day chart, heatmap and monthly trend are fixed-window views and the
   // streak is a "right now" property — all stay all-time regardless of scope.
@@ -39,12 +41,13 @@ async function refresh() {
     get('/studylog/summary' + q),
     get('/studylog/dashboard-stats'),
   ]);
+  const body = _el.querySelector('#sl-body');
+  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
   summary.streak = stats.current_streak;
   userGoals = {
     daily_goal_minutes:  stats.daily_goal  || 0,
     weekly_goal_minutes: stats.weekly_goal || 0,
   };
-  const body = _el.querySelector('#sl-body');
   body.innerHTML = buildPage(logs, weekly, summary);
   attachEvents(body, logs);
   renderChart(body, weekly);
