@@ -1,5 +1,6 @@
 import { get, post, del, escHtml, fmtDate } from './api.js';
 import { t, getLang } from './i18n.js';
+import { localD } from './period-filter.js';
 
 const RARITY_COLOR = { common: 'var(--border)', uncommon: '#4a90d9', rare: '#9b59b6', epic: '#f39c12', custom: '#27ae60' };
 const ALL_CATEGORIES = ['習慣', '努力', '完成', '成績', '自訂'];
@@ -15,7 +16,7 @@ async function load() {
 
 function badgeCard(b) {
   const color = RARITY_COLOR[b.rarity] || 'var(--border)';
-  const earnedAt = b.earned_at ? fmtDate(new Date(b.earned_at).toISOString().slice(0, 10)) : '';
+  const earnedAt = b.earned_at ? fmtDate(localD(b.earned_at)) : '';
 
   const ptsChip = `<span style="font-size:.65rem;color:#d4a010;font-weight:600">⭐ ${b.points} ${t('shop.pointUnit')}</span>`;
 

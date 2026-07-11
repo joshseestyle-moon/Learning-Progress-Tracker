@@ -12,11 +12,7 @@ router.get('/', userCtx, (req, res) => {
 
   if (req.query.upcoming) {
     const n = Math.max(1, Math.min(365, parseInt(req.query.upcoming) || 3));
-    const limit = new Date();
-    limit.setDate(limit.getDate() + n);
-    const limitStr = limit.toISOString().slice(0, 10);
-    sql += ` AND a.due_date >= date('now','localtime') AND a.due_date <= ? AND a.is_done = 0`;
-    params.push(limitStr);
+    sql += ` AND a.due_date >= date('now','localtime') AND a.due_date <= date('now','localtime','+${n} days') AND a.is_done = 0`;
   }
   sql += ' ORDER BY a.due_date ASC';
   res.json(db.prepare(sql).all(...params));
