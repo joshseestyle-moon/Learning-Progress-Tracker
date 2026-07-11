@@ -184,42 +184,47 @@ function openAndMigrate() {
   // Migration 11: reward store tables
   const hasPointLog = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='point_log'").get();
   if (!hasPointLog) {
-    db.exec(`
-      CREATE TABLE point_log (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        delta      INTEGER NOT NULL,
-        reason     TEXT    NOT NULL,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX idx_point_log_user ON point_log(user_id);
-      CREATE TABLE reward_items (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name       TEXT    NOT NULL,
-        cost       INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX idx_reward_items_user ON reward_items(user_id);
-      CREATE TABLE redemption_log (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        item_name   TEXT    NOT NULL,
-        cost        INTEGER NOT NULL,
-        redeemed_at TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX idx_redemption_log_user ON redemption_log(user_id);
-    `);
+    // Whole thing is one transaction, matching the Migration 22 convention below:
+    // if the process dies mid-backfill, point_log won't exist on restart so the
+    // guard re-runs it cleanly — never a half-backfilled state.
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE point_log (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          delta      INTEGER NOT NULL,
+          reason     TEXT    NOT NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_point_log_user ON point_log(user_id);
+        CREATE TABLE reward_items (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name       TEXT    NOT NULL,
+          cost       INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_reward_items_user ON reward_items(user_id);
+        CREATE TABLE redemption_log (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          item_name   TEXT    NOT NULL,
+          cost        INTEGER NOT NULL,
+          redeemed_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_redemption_log_user ON redemption_log(user_id);
+      `);
 
-    // Backfill existing badges → point_log so current users get their points
-    const RARITY_PTS = { common: 10, uncommon: 25, rare: 50, epic: 100 };
-    const BADGES_DEF = require('../badges/definitions');
-    const existing = db.prepare('SELECT user_id, badge_id, earned_at FROM user_badges').all();
-    const insertPts = db.prepare('INSERT INTO point_log (user_id, delta, reason, created_at) VALUES (?, ?, ?, ?)');
-    for (const row of existing) {
-      const def = BADGES_DEF.find(b => b.id === row.badge_id);
-      if (def) insertPts.run(row.user_id, RARITY_PTS[def.rarity] || 10, 'badge:' + row.badge_id, row.earned_at);
-    }
+      // Backfill existing badges → point_log so current users get their points
+      const { RARITY_PTS } = require('../utils/points');
+      const BADGES_DEF = require('../badges/definitions');
+      const existing = db.prepare('SELECT user_id, badge_id, earned_at FROM user_badges').all();
+      const insertPts = db.prepare('INSERT INTO point_log (user_id, delta, reason, created_at) VALUES (?, ?, ?, ?)');
+      for (const row of existing) {
+        const def = BADGES_DEF.find(b => b.id === row.badge_id);
+        if (def) insertPts.run(row.user_id, RARITY_PTS[def.rarity] || 10, 'badge:' + row.badge_id, row.earned_at);
+      }
+    })();
   }
 
   // Migration 12: custom achievements per user

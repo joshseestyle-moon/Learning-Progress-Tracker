@@ -2,7 +2,7 @@ const router  = require('express').Router();
 const db      = require('../db/db');
 const userCtx = require('../middleware/userContext');
 const BADGES  = require('../badges/definitions');
-const { getBalance, RARITY_PTS } = require('../utils/points');
+const { getBalance } = require('../utils/points');
 const { clampText, LIMITS } = require('../utils/validate');
 const _badgeMap  = new Map(BADGES.map(b => [b.id, { name: b.name, icon: b.icon }]));
 
