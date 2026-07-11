@@ -1,30 +1,49 @@
 import { get, post, put, del, patch, escHtml, fmtDate, today } from './api.js';
 import { t } from './i18n.js';
+import { initPeriodFilter, localD } from './period-filter.js';
 
 let subjects = [];
+let _el;
+let _scope = { mode: 'all' };
 
 export async function render(el) {
+  _el = el;
   try {
     subjects = await get('/subjects');
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
-  await refresh(el);
+  el.innerHTML = `<div id="ch-filter"></div><div id="ch-body"></div>`;
+  await initPeriodFilter(el.querySelector('#ch-filter'), scope => { _scope = scope; refresh(); });
 }
 
-async function refresh(el) {
+// Derived membership: a chapter belongs to the selected period if it was created
+// within the period OR any of its review sessions is scheduled inside it. The
+// latter keeps spaced-repetition reviews visible when they span into a later
+// period — carrying a chapter across semesters is intended, not clutter.
+function inScope(c) {
+  if (_scope.mode !== 'period') return true;
+  const { from, to } = _scope;
+  const created = localD(c.created_at);
+  if (created && created >= from && created <= to) return true;
+  return (c.reviews || []).some(r => r.scheduled_date && r.scheduled_date >= from && r.scheduled_date <= to);
+}
+
+async function refresh() {
   const [chapters, timeByChapter] = await Promise.all([
     get('/chapters'),
     get('/studylog/by-chapter'),
   ]);
   const timeMap = {};
   for (const t of timeByChapter) timeMap[t.chapter_id] = t.total_minutes;
-  el.innerHTML = buildPage(chapters, timeMap);
-  attachEvents(el, chapters);
+  const scoped = chapters.filter(inScope);
+  const body = _el.querySelector('#ch-body');
+  body.innerHTML = buildPage(scoped, timeMap, chapters.length);
+  attachEvents(_el, scoped);
 }
 
-function buildPage(chapters, timeMap = {}) {
+function buildPage(chapters, timeMap = {}, totalCount = 0) {
   const bySubject = {};
   for (const c of chapters) {
     if (!bySubject[c.subject_id]) bySubject[c.subject_id] = { name: c.subject_name, color: c.subject_color, items: [] };
@@ -75,7 +94,9 @@ function buildPage(chapters, timeMap = {}) {
             </div>
           </div>
         </div>`;
-    }).join('') : `<div class="empty-state"><div class="icon">📖</div><p>${t('ch.noSubject')}</p></div>`}
+    }).join('') : `<div class="empty-state"><div class="icon">📖</div><p>${
+      _scope.mode === 'period' && totalCount > 0 ? t('ch.emptyPeriod') : t('ch.noSubject')
+    }</p></div>`}
     <div id="ch-modal" class="modal-overlay hidden">${buildModal()}</div>
     <div id="date-modal" class="modal-overlay hidden"></div>`;
 }
@@ -225,14 +246,14 @@ function openDateModal(el, title, currentDate, currentNotes, onSave, onClear) {
     const notes = modal.querySelector('#dm-notes').value;
     await onSave(date, notes);
     modal.classList.add('hidden');
-    await refresh(el);
+    await refresh();
   };
   const clearBtn = modal.querySelector('#dm-clear');
   if (clearBtn) clearBtn.onclick = async () => {
     const notes = modal.querySelector('#dm-notes').value;
     await onClear(notes);
     modal.classList.add('hidden');
-    await refresh(el);
+    await refresh();
   };
   modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
   setTimeout(() => modal.querySelector('#dm-notes').focus(), 50);
@@ -292,7 +313,7 @@ async function save(el, existing) {
   if (!body.title) return alert(t('alert.fillChapterName'));
   if (existing) await put('/chapters/' + existing.id, body);
   else          await post('/chapters', body);
-  await refresh(el);
+  await refresh();
 }
 
 function attachEvents(el, chapters) {
@@ -314,12 +335,12 @@ function attachEvents(el, chapters) {
               const todayStr = today();
               try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.id }); } catch (_) {}
             }
-            await refresh(el);
+            await refresh();
           },
-          () => refresh(el)
+          () => refresh()
         );
       } else {
-        await refresh(el);
+        await refresh();
       }
     };
   });
@@ -351,12 +372,12 @@ function attachEvents(el, chapters) {
               const todayStr = today();
               try { await post('/studylog', { subject_id: +btn.dataset.subjectId, log_date: todayStr, minutes, chapter_id: +btn.dataset.chId }); } catch (_) {}
             }
-            await refresh(el);
+            await refresh();
           },
-          () => refresh(el)
+          () => refresh()
         );
       } else {
-        await refresh(el);
+        await refresh();
       }
     };
   });
@@ -382,7 +403,7 @@ function attachEvents(el, chapters) {
     btn.onclick = async () => {
       if (!confirm(t('confirm.deleteReview'))) return;
       await del('/chapters/progress/' + btn.dataset.pid);
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -391,7 +412,7 @@ function attachEvents(el, chapters) {
     btn.onclick = async () => {
       try {
         await post('/chapters/' + btn.dataset.chId + '/review', {});
-        await refresh(el);
+        await refresh();
       } catch (e) {
         alert(t('ch.addReviewFail', { msg: e.message }));
       }
@@ -403,7 +424,7 @@ function attachEvents(el, chapters) {
     btn.onclick = async () => {
       if (!confirm(t('confirm.deleteChapter'))) return;
       await del('/chapters/' + btn.dataset.id);
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -413,7 +434,7 @@ function attachEvents(el, chapters) {
       if (!confirm(t('confirm.deleteAllChapters', { name: btn.dataset.name }))) return;
       try {
         await del('/chapters?subject_id=' + btn.dataset.sid);
-        await refresh(el);
+        await refresh();
       } catch (e) {
         alert(t('ch.deleteFail', { msg: e.message }));
       }
