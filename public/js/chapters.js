@@ -1,22 +1,27 @@
 import { get, post, put, del, patch, escHtml, fmtDate, today } from './api.js';
 import { t } from './i18n.js';
-import { initPeriodFilter, localD } from './period-filter.js';
+import { localD, inRange, mountPeriodScoped } from './period-filter.js';
 
 let subjects = [];
-let _el;
 let _scope = { mode: 'all' };
-let _gen = 0;
+let _mount;
+// { chapters, timeMap } — first fetch per render() is cached here so chip
+// switches only refilter+redraw (0 fetches); render() resets it to null so
+// leaving and re-entering the page still refetches.
+let _cache = null;
 
 export async function render(el) {
-  _el = el;
+  _cache = null;
   try {
     subjects = await get('/subjects');
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
-  el.innerHTML = `<div id="ch-filter"></div><div id="ch-body"></div>`;
-  await initPeriodFilter(el.querySelector('#ch-filter'), scope => { _scope = scope; refresh(); });
+  await mountPeriodScoped(el, {
+    filterId: 'ch-filter', bodyId: 'ch-body',
+    onChange: (scope, mount) => { _mount = mount; _scope = scope; applyScope(); },
+  });
 }
 
 // Derived membership: a chapter belongs to the selected period if it was created
@@ -24,26 +29,38 @@ export async function render(el) {
 // latter keeps spaced-repetition reviews visible when they span into a later
 // period — carrying a chapter across semesters is intended, not clutter.
 function inScope(c) {
-  if (_scope.mode !== 'period') return true;
-  const { from, to } = _scope;
   const created = localD(c.created_at);
-  if (created && created >= from && created <= to) return true;
-  return (c.reviews || []).some(r => r.scheduled_date && r.scheduled_date >= from && r.scheduled_date <= to);
+  if (created && inRange(created, _scope)) return true;
+  return (c.reviews || []).some(r => r.scheduled_date && inRange(r.scheduled_date, _scope));
 }
 
+function renderFromCache(body) {
+  const scoped = _cache.chapters.filter(inScope);
+  body.innerHTML = buildPage(scoped, _cache.timeMap, _cache.chapters.length);
+  attachEvents(body, scoped);
+}
+
+// Chip switch: reuse the cached dataset, just refilter + redraw (no fetch).
+function applyScope() {
+  if (!_cache) { refresh(); return; }
+  const body = _mount.begin()(); // bump gen, then resolve immediately (no await in between)
+  if (!body) return;
+  renderFromCache(body);
+}
+
+// Mutations (add/edit/delete/toggle) always refetch — the dataset actually changed.
 async function refresh() {
-  const gen = ++_gen;
+  const done = _mount.begin();
   const [chapters, timeByChapter] = await Promise.all([
     get('/chapters'),
     get('/studylog/by-chapter'),
   ]);
   const timeMap = {};
   for (const t of timeByChapter) timeMap[t.chapter_id] = t.total_minutes;
-  const scoped = chapters.filter(inScope);
-  const body = _el.querySelector('#ch-body');
-  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
-  body.innerHTML = buildPage(scoped, timeMap, chapters.length);
-  attachEvents(_el, scoped);
+  _cache = { chapters, timeMap };
+  const body = done();
+  if (!body) return;
+  renderFromCache(body);
 }
 
 function buildPage(chapters, timeMap = {}, totalCount = 0) {

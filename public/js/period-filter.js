@@ -21,6 +21,44 @@ export function localD(ts) {
   return ymd(new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z'));
 }
 
+// Shared point-in-range test for the exam / grade / chapter detail pages:
+// dateStr is a plain 'YYYY-MM-DD' (already run through localD() if it came
+// from a UTC timestamp column). scope.mode !== 'period' means "全部" — always
+// in range.
+export function inRange(dateStr, scope) {
+  return scope.mode !== 'period' ? true : dateStr >= scope.from && dateStr <= scope.to;
+}
+
+// Higher-order mount for the "period-scoped page" boilerplate shared by the
+// chapters / exams / homework / study-log pages: builds the two child
+// containers (filter row + body), wires initPeriodFilter, and hands back a
+// `mount` object with a render-generation guard so a page module never has to
+// hand-roll its own `_gen` counter.
+//
+// Usage:
+//   onChange: (scope, mount) => { _mount = mount; ...fetch...; const body = mount.begin()(); }
+// or, more commonly:
+//   const done = mount.begin();      // call right before an async fetch
+//   ...await fetch...
+//   const body = done();             // null if stale/navigated away — bail
+//   if (!body) return;
+//   body.innerHTML = ...
+export async function mountPeriodScoped(el, { filterId, bodyId, onChange }) {
+  el.innerHTML = `<div id="${filterId}"></div><div id="${bodyId}"></div>`;
+  let gen = 0;
+  const mount = {
+    begin() {
+      const myGen = ++gen;
+      return () => {
+        const body = el.querySelector('#' + bodyId);
+        return (body && myGen === gen) ? body : null;
+      };
+    },
+  };
+  await initPeriodFilter(el.querySelector('#' + filterId), scope => onChange(scope, mount));
+  return mount;
+}
+
 export async function initPeriodFilter(container, onChange) {
   const periods = await get('/periods');
   if (!periods.length) {

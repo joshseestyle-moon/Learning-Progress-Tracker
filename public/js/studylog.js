@@ -1,6 +1,6 @@
 import { get, post, put, del, escHtml, today, ymd, getUserId, fmtMonth } from './api.js';
 import { t } from './i18n.js';
-import { initPeriodFilter } from './period-filter.js';
+import { mountPeriodScoped } from './period-filter.js';
 
 let subjects = [];
 let allChapters = [];
@@ -11,48 +11,69 @@ let timerRunning = false;
 let timerSubjectId = null;
 let timerChapterId = null;
 
-let _el;
 let _scope = { mode: 'all' };
-let _gen = 0;
+let _mount;
+// { weekly, heatmap, monthly, stats } — these 4 views are fixed-window /
+// "right now" and don't depend on scope, so they're fetched once per
+// render() and reused across chip switches (only /studylog + /summary vary).
+let _fixed = null;
 
 export async function render(el) {
-  _el = el;
+  _fixed = null;
   try {
     [subjects, allChapters] = await Promise.all([get('/subjects'), get('/chapters')]);
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
-  el.innerHTML = `<div id="sl-filter"></div><div id="sl-body"></div>`;
-  await initPeriodFilter(el.querySelector('#sl-filter'), scope => { _scope = scope; refresh(); });
+  await mountPeriodScoped(el, {
+    filterId: 'sl-filter', bodyId: 'sl-body',
+    onChange: (scope, mount) => { _mount = mount; _scope = scope; applyScope(); },
+  });
 }
 
-async function refresh() {
-  const gen = ++_gen;
-  // Period scope narrows the record LIST and the 學習總覽 summary only.
-  // The 7-day chart, heatmap and monthly trend are fixed-window views and the
-  // streak is a "right now" property — all stay all-time regardless of scope.
+function renderFromData(body, logs, summary) {
+  summary.streak = _fixed.stats.current_streak;
+  userGoals = {
+    daily_goal_minutes:  _fixed.stats.daily_goal  || 0,
+    weekly_goal_minutes: _fixed.stats.weekly_goal || 0,
+  };
+  body.innerHTML = buildPage(logs, _fixed.weekly, summary);
+  attachEvents(body, logs);
+  renderChart(body, _fixed.weekly);
+  renderHeatmap(body, _fixed.heatmap);
+  renderMonthly(body, _fixed.monthly);
+}
+
+// Chip switch: only /studylog + /summary vary by scope, refetch just those 2
+// and reuse the cached fixed-window views (0 extra fetches for those 4).
+async function applyScope() {
+  if (!_fixed) { await refresh(); return; }
+  const done = _mount.begin();
   const q = _scope.mode === 'period' ? `?from=${_scope.from}&to=${_scope.to}` : '';
-  const [logs, weekly, heatmap, monthly, summary, stats] = await Promise.all([
+  const [logs, summary] = await Promise.all([get('/studylog' + q), get('/studylog/summary' + q)]);
+  const body = done();
+  if (!body) return;
+  renderFromData(body, logs, summary);
+}
+
+// Mutations (add/delete log, save goals) always refetch everything — the
+// fixed-window views (streak, heatmap, etc.) can be affected by the change too.
+async function refresh() {
+  const done = _mount.begin();
+  const q = _scope.mode === 'period' ? `?from=${_scope.from}&to=${_scope.to}` : '';
+  const [logs, summary, weekly, heatmap, monthly, stats] = await Promise.all([
     get('/studylog' + q),
+    get('/studylog/summary' + q),
     get('/studylog/weekly'),
     get('/studylog/heatmap?days=364'),
     get('/studylog/monthly?months=6'),
-    get('/studylog/summary' + q),
     get('/studylog/dashboard-stats'),
   ]);
-  const body = _el.querySelector('#sl-body');
-  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
-  summary.streak = stats.current_streak;
-  userGoals = {
-    daily_goal_minutes:  stats.daily_goal  || 0,
-    weekly_goal_minutes: stats.weekly_goal || 0,
-  };
-  body.innerHTML = buildPage(logs, weekly, summary);
-  attachEvents(body, logs);
-  renderChart(body, weekly);
-  renderHeatmap(body, heatmap);
-  renderMonthly(body, monthly);
+  _fixed = { weekly, heatmap, monthly, stats };
+  const body = done();
+  if (!body) return;
+  renderFromData(body, logs, summary);
 }
 
 function chaptersForSubject(subjectId) {

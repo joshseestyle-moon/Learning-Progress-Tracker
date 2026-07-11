@@ -1,6 +1,6 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
 import { t } from './i18n.js';
-import { initPeriodFilter } from './period-filter.js';
+import { initPeriodFilter, inRange } from './period-filter.js';
 
 let subjects = [];
 let exams = [];
@@ -28,9 +28,7 @@ async function refresh() {
   const grades = await get(url);
   // Period scope narrows both the table and the trend chart — the whole page is
   // one dataset (exam_date is a bare date column, compared directly).
-  const scoped = _scope.mode === 'period'
-    ? grades.filter(g => g.exam_date >= _scope.from && g.exam_date <= _scope.to)
-    : grades;
+  const scoped = grades.filter(g => inRange(g.exam_date, _scope));
   const body = _el.querySelector('#gr-body');
   if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
   body.innerHTML = buildPage(scoped);

@@ -1,6 +1,6 @@
 import { get, post, put, del, escHtml, fmtDate } from './api.js';
 import { t } from './i18n.js';
-import { initPeriodFilter } from './period-filter.js';
+import { inRange, mountPeriodScoped } from './period-filter.js';
 
 let subjects = [];
 
@@ -11,28 +11,45 @@ function TYPE_LABEL() {
   };
 }
 
-let _el;
 let _scope = { mode: 'all' };
-let _gen = 0;
+let _mount;
+// { exams, chapters } — first fetch per render() is cached here so chip
+// switches only refilter+redraw (0 fetches); render() resets it to null so
+// leaving and re-entering the page still refetches.
+let _cache = null;
 
 export async function render(el) {
-  _el = el;
+  _cache = null;
   subjects = await get('/subjects');
-  el.innerHTML = `<div id="exam-filter"></div><div id="exam-body"></div>`;
-  await initPeriodFilter(el.querySelector('#exam-filter'), scope => { _scope = scope; refresh(); });
+  await mountPeriodScoped(el, {
+    filterId: 'exam-filter', bodyId: 'exam-body',
+    onChange: (scope, mount) => { _mount = mount; _scope = scope; applyScope(); },
+  });
 }
 
-async function refresh() {
-  const gen = ++_gen;
-  const [exams, chapters] = await Promise.all([get('/exams'), get('/chapters')]);
-  const progressMap = buildProgressMap(chapters);
-  const scoped = _scope.mode === 'period'
-    ? exams.filter(e => e.exam_date >= _scope.from && e.exam_date <= _scope.to)
-    : exams;
-  const body = _el.querySelector('#exam-body');
-  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
+function renderFromCache(body) {
+  const progressMap = buildProgressMap(_cache.chapters);
+  const scoped = _cache.exams.filter(e => inRange(e.exam_date, _scope));
   body.innerHTML = buildPage(scoped, progressMap);
   attachEvents(body, scoped);
+}
+
+// Chip switch: reuse the cached dataset, just refilter + redraw (no fetch).
+function applyScope() {
+  if (!_cache) { refresh(); return; }
+  const body = _mount.begin()(); // bump gen, then resolve immediately (no await in between)
+  if (!body) return;
+  renderFromCache(body);
+}
+
+// Mutations (add/edit/delete/toggle) always refetch — the dataset actually changed.
+async function refresh() {
+  const done = _mount.begin();
+  const [exams, chapters] = await Promise.all([get('/exams'), get('/chapters')]);
+  _cache = { exams, chapters };
+  const body = done();
+  if (!body) return;
+  renderFromCache(body);
 }
 
 function buildProgressMap(chapters) {

@@ -1,28 +1,30 @@
 import { get, post, patch, del, escHtml, fmtDate, today, ymd } from './api.js';
 import { t } from './i18n.js';
-import { initPeriodFilter } from './period-filter.js';
+import { mountPeriodScoped } from './period-filter.js';
 
 let _el = null;
 let _subjects = [];
 let _scope = { mode: 'all' };
-let _gen = 0;
+let _mount;
 
 export async function render(el) {
   _el = el;
   _subjects = await get('/subjects');
-  el.innerHTML = `<div id="hw-filter"></div><div id="hw-body"></div>`;
-  await initPeriodFilter(el.querySelector('#hw-filter'), scope => { _scope = scope; refresh(); });
+  await mountPeriodScoped(el, {
+    filterId: 'hw-filter', bodyId: 'hw-body',
+    onChange: (scope, mount) => { _mount = mount; _scope = scope; refresh(); },
+  });
 }
 
 async function refresh() {
-  const gen = ++_gen;
+  const done = _mount.begin();
   // All scope: rolling ±30 days (current behaviour). Period scope: the period's range.
   const range = _scope.mode === 'period'
     ? { from: _scope.from, to: _scope.to }
     : { from: offsetDate(-30), to: offsetDate(30) };
   const tasks = await get(`/daily-tasks?from=${range.from}&to=${range.to}`);
-  const body = _el.querySelector('#hw-body');
-  if (!body || gen !== _gen) return; // navigated away, or superseded by a newer refresh
+  const body = done();
+  if (!body) return; // navigated away, or superseded by a newer refresh
   body.innerHTML = buildPage(tasks);
   attachAddEvent(body);
 }
