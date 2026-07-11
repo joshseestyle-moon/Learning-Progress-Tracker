@@ -183,6 +183,7 @@ function buildGoalModal(g) {
           ${['chapter', 'grade', 'text'].map(tp =>
             `<option value="${tp}" ${type === tp ? 'selected' : ''}>${GOAL_ICONS[tp]} ${t('goal.type.' + tp)}</option>`).join('')}
         </select>
+        <div id="gm-type-hint" style="font-size:.8rem;color:var(--text2);background:var(--bg3);border-radius:8px;padding:.5rem .7rem;margin-top:.5rem;line-height:1.5;">💡 ${t('goal.typeHint.' + type)}</div>
       </div>
       <div class="form-group">
         <label class="form-label">${t('goal.titleLabel')}</label>
@@ -243,6 +244,8 @@ function openGoalModal(el, existing) {
     const tp = typeSel.value;
     modal.querySelectorAll('.gm-only-chapter').forEach(d => d.style.display = tp === 'chapter' ? '' : 'none');
     modal.querySelectorAll('.gm-only-grade').forEach(d => d.style.display = tp === 'grade' ? '' : 'none');
+    const hint = modal.querySelector('#gm-type-hint');
+    if (hint) hint.textContent = '💡 ' + t('goal.typeHint.' + tp);
   };
   typeSel.onchange = updateVisibility;
 
