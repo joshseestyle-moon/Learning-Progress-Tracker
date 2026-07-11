@@ -185,6 +185,15 @@ function attachAddEvent(el) {
       // Re-fetch with the current scope (1 request) so added tasks respect it.
       await refresh();
 
+      // Period scope filters the list server-side by date range. A task dated
+      // outside the currently-viewed period was saved fine but just vanished
+      // from view with no explanation — tell the user where it went.
+      if (_scope.mode === 'period' && (date < _scope.from || date > _scope.to)) {
+        window.dispatchEvent(new CustomEvent('app-toast', {
+          detail: { icon: '📌', title: t('hw.addedOutsideScope'), color: 'var(--warn)' },
+        }));
+      }
+
       // refresh() rebuilds #hw-body (including #hw-title) with fresh, already-blank
       // inputs — but the new node isn't focused automatically, which breaks rapid
       // entry. Re-focus it here (guarded: refresh() may have bailed if the user
