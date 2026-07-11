@@ -1,6 +1,6 @@
 # 學習管理系統 — 系統文件
 
-> 版本：3.5　　最後更新：2026-07-08
+> 版本：3.9　　最後更新：2026-07-11
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 1. 系統概述
 
-本系統為本機局域網路多人學習管理工具，提供課表排定、作業追蹤、考試倒數、讀書進度管理、讀書時間記錄及成績紀錄等功能。
+本系統為本機局域網路多人學習管理工具，提供課表排定、作業追蹤、考試倒數、讀書進度管理、讀書時間記錄及成績紀錄等功能；並內建「飛輪」成長機制——目標設定、學習區間規劃、遊戲化系統（XP／等級／連續 combo／每日驚喜獎勵／逾期補救任務）、成長軌跡頁與可列印的學習歷程報告，以及啟動時自動備份資料庫。
 
 ### 設計原則
 
@@ -94,7 +94,17 @@ X:\class\
 │   └── checker.js              # checkBadges(userId)：檢查並頒發新徽章
 │
 ├── utils/
-│   └── points.js               # getBalance(userId)：計算使用者點數餘額（共用工具）
+│   ├── points.js               # getBalance(userId)：計算使用者點數餘額（共用工具）
+│   ├── xp.js                   # XP/等級曲線：XP_RULES、xpToAdvance、levelForXp、SURPRISE_TIERS、rollSurpriseTier
+│   ├── streak.js                # 連續天數計算、combo 天數與倍率、localToday() 共用今日日期函式
+│   ├── catchup.js               # 補救排程純函式 planCatchup、addDays、LATE_CLEARED_PREDICATE
+│   ├── goalMetrics.js           # 依目標類型（chapter/grade）從 DB 查詢視窗內的指標
+│   ├── goalProgress.js          # 純函式 goalWindow（目標評估日期窗）、computeProgress
+│   ├── reportRange.js           # 日期範圍純函式：schoolYearRange、lastWeekRange、prevRange
+│   ├── recapHighlight.js        # 純函式 pickRecapHighlight：週回顧卡挑選單一慶祝亮點
+│   ├── srs.js                   # 間隔重複排程純函式 nextReviewDate（intervals = 1/3/7/16/35 天）
+│   ├── autoBackup.js            # 啟動時每 ≥6 天做一次 VACUUM INTO 快照，保留最新 8 份
+│   └── validate.js              # 共用輸入處理：clampText、LIMITS（name/title/note 長度上限）
 │
 ├── scripts/
 │   └── copy-user-data.js       # 複製使用者所有資料至另一帳號（指令列工具）
@@ -103,14 +113,19 @@ X:\class\
 │   ├── users.js                # 使用者 CRUD
 │   ├── subjects.js             # 科目 CRUD
 │   ├── timetable.js            # 課表 CRUD
-│   ├── assignments.js          # 作業 CRUD（結構化，需 subject_id）
+│   ├── assignments.js          # 作業 CRUD（結構化，需 subject_id；即「事件」，完成不發 XP／驚喜）
 │   ├── exams.js                # 考試 CRUD
 │   ├── chapters.js             # 章節 CRUD + 進度管理
 │   ├── studylog.js             # 讀書時間記錄
 │   ├── grades.js               # 成績紀錄
 │   ├── badges.js               # 系統徽章 + 自訂成就
 │   ├── shop.js                 # 獎勵商店（許願池、兌換、紀錄）
-│   └── daily-tasks.js          # 作業清單 CRUD（自由格式，含 subject、多部份、badge 觸發）
+│   ├── daily-tasks.js          # 作業清單 CRUD（自由格式，含 subject、多部份、badge 觸發）
+│   ├── periods.js              # 學期/寒暑假區間 CRUD + 區間統計摘要
+│   ├── goals.js                # 目標設定 CRUD（章節/成績/自由文字）
+│   ├── gamify.js                # 遊戲化狀態（XP/等級/combo/驚喜）＋成長頁彙總
+│   ├── catchup.js               # 逾期補救：狀態查詢、重新排程、接受補救任務
+│   └── report.js                # 學習歷程報告資料、週回顧比較
 │
 └── public/
     ├── index.html              # 個人檔案選擇頁
@@ -134,7 +149,12 @@ X:\class\
     │   ├── grades.js           # 成績紀錄頁
     │   ├── badges.js           # 我的徽章頁
     │   ├── subjects.js         # 課程資訊管理頁
-    │   └── print.js            # 列印週計畫頁
+    │   ├── print.js            # 列印週計畫頁
+    │   ├── goals.js            # 目標設定頁
+    │   ├── growth.js           # 成長軌跡頁
+    │   ├── report.js           # 學習歷程報告頁（A4 可列印）
+    │   ├── gamify-ui.js        # 共用模組：levelCard 等 UI 片段（dashboard/growth 共用，無獨立 route）
+    │   └── period-filter.js    # 共用模組：區間篩選 chip 列（exams/homework/studylog/chapters 共用，無獨立 route）
     └── vendor/
         ├── alpine.min.js       # （選用）Alpine.js 離線備份
         └── chart.min.js        # （選用）Chart.js 離線備份
@@ -226,6 +246,11 @@ users ──┬── timetable_slots
         ├── redemption_log
         ├── custom_badges ──── custom_badge_earned
         ├── daily_tasks ──── daily_task_parts
+        ├── periods ──（可選）── goals
+        ├── goals
+        ├── xp_log
+        ├── daily_reward_log
+        ├── catchup_quests ──── catchup_quest_items
         └── (透過 subjects 繼承) chapters ──── chapter_progress
 
 subjects ──┬── timetable_slots
@@ -259,6 +284,7 @@ subjects ──┬── timetable_slots
 | `user_id` | INTEGER FK | 所屬使用者（ON DELETE CASCADE） |
 | `name` | TEXT | 科目名稱 |
 | `color` | TEXT | 代表顏色（CSS hex） |
+| `category` | TEXT | 考科分類：`exam`（考科）/ `non_exam`（非考科），預設 `exam`（Migration 19） |
 
 #### `timetable_slots` — 每週課表
 
@@ -332,6 +358,7 @@ subjects ──┬── timetable_slots
 | `is_done` | INTEGER | 是否完成（0/1） |
 | `done_at` | TEXT | 完成時間 |
 | `notes` | TEXT | 備註（學習狀況、重點、待補內容等，可為空） |
+| `original_scheduled_date` | TEXT | 補救排程前的原始到期日（可為 null），供「曾逾期後清除」判斷與徽章使用（Migration 25） |
 
 - 唯一約束：`(user_id, chapter_id, type, seq)`
 - 每個章節可有一筆預習（seq=1）與多筆複習（seq=1,2,3…）進度記錄
@@ -391,6 +418,8 @@ subjects ──┬── timetable_slots
 | `exchange:<badge_id>` | 系統徽章換點數（v2.8+） |
 | `exchange:custom_<id>` | 自訂成就換點數（v2.8+） |
 | `redeem:<item_id>` | 兌換商店獎勵（負值） |
+| `surprise:<YYYY-MM-DD>` | 每日驚喜獎勵（v3.6，一天一次，詳見第 6 節「遊戲化 `/api/gamify`」） |
+| `quest:<questId>` | 補救任務完成獎勵點數（v3.6，flat 值，不套 combo 倍率） |
 
 - 當前餘額 = `SUM(delta) WHERE user_id = ?`
 - 系統徽章稀有度對應點數：普通=10、進階=25、稀有=50、傳說=100
@@ -477,6 +506,97 @@ subjects ──┬── timetable_slots
 
 - 每日鎖定：同一 `badge_id` 當天已有兌換記錄則禁止重新獲得，防止刷點
 
+#### `periods` — 學期/寒暑假區間（Migration 20）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `school_year` | INTEGER | 民國學年 |
+| `type` | TEXT | `semester1` / `winter` / `semester2` / `summer` |
+| `start_date` | TEXT | 起始日期（YYYY-MM-DD） |
+| `end_date` | TEXT | 結束日期（YYYY-MM-DD） |
+| `created_at` | TEXT | 建立時間 |
+
+- 唯一約束：`(user_id, school_year, type)`；索引：`idx_periods_user`
+- 使用者自訂的學期/寒暑假日期範圍；goals、report summary、各明細頁的區間篩選皆以此為準
+
+#### `goals` — 目標設定（章節/成績/自由文字，Migration 21）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `title` | TEXT | 目標名稱 |
+| `goal_type` | TEXT | `chapter` / `grade` / `text` |
+| `horizon` | TEXT | 期程：`short`（短期）/ `mid`（中期）/ `long`（長期），預設 `short` |
+| `period_id` | INTEGER FK | 綁定的區間（可為 null，ON DELETE SET NULL） |
+| `subject_id` | INTEGER FK | 關聯科目（可為 null，ON DELETE SET NULL） |
+| `exam_type` | TEXT | 僅 `grade` 目標使用 |
+| `target_value` | INTEGER | `chapter`=次數；`grade`=分數；`text` 為 null |
+| `due_date` | TEXT | 截止日（可為 null） |
+| `is_done` | INTEGER | 是否完成（0/1） |
+| `done_at` | TEXT | 完成時間 |
+| `created_at` | TEXT | 建立時間 |
+
+- 索引：`idx_goals_user`；無唯一約束
+- 評估視窗：若綁定 `period_id`，視窗＝該區間 `[start_date, end_date]`；否則＝`[建立日, due_date 或不設上限]`
+
+#### `xp_log` — 永久成長 XP 流水帳（Migration 22）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `delta` | INTEGER | XP 增量 |
+| `reason` | TEXT | 格式如 `study:<id>`、`chapter:<progressId>`、`task:<taskId>:<partNum\|done>`、`goal:<id>`、`quest:<id>` |
+| `created_at` | TEXT | 交易時間 |
+
+- 索引：`idx_xp_log_user`；無唯一約束（靠 reason 字串＋grantOnce 防重）
+- 與可花費的 `point_log` 分離，XP 只增不減，用於等級與成長軌跡
+
+#### `daily_reward_log` — 每日驚喜獎勵紀錄（Migration 23）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `reward_date` | TEXT | 獎勵日期 |
+| `tier` | INTEGER | 1–4，機率與點數詳見第 6 節「遊戲化 `/api/gamify`」 |
+| `points` | INTEGER | 已套用 combo 倍率後的實際點數 |
+| `created_at` | TEXT | 建立時間 |
+
+- 唯一約束：`(user_id, reward_date)`（一天一次的機制根基，搭配 `INSERT OR IGNORE`）；索引：`idx_daily_reward_user`
+
+#### `catchup_quests` — 補救任務（Migration 24）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `user_id` | INTEGER FK | 使用者（ON DELETE CASCADE） |
+| `title` | TEXT | 固定文案「補救挑戰」 |
+| `target_count` | INTEGER | 目標完成數（≤5） |
+| `deadline_date` | TEXT | 接受日 + 3 天 |
+| `bonus_points` | INTEGER | 預設 30 |
+| `bonus_xp` | INTEGER | 預設 50 |
+| `status` | TEXT | `active` / `completed` / `expired`，預設 `active` |
+| `created_at` | TEXT | 建立時間 |
+| `completed_at` | TEXT | 完成時間（可為空） |
+
+- 索引：`idx_catchup_quests_user`；同一使用者同時只能有一筆 `status='active'` 的任務
+- 過期不扣罰：`deadline_date < today` 時懶惰轉為 `expired`（鼓勵導向，無懲罰機制）
+
+#### `catchup_quest_items` — 補救任務項目快照（Migration 24）
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `quest_id` | INTEGER FK | 所屬補救任務（ON DELETE CASCADE） |
+| `kind` | TEXT | `chapter` / `task` |
+| `item_id` | INTEGER | 對應 `chapter_progress.id` 或 `daily_tasks.id`（接受任務當下的快照） |
+
+- 唯一約束：`(quest_id, kind, item_id)`；索引：`idx_catchup_quest_items_quest`
+
 ---
 
 ## 6. API 文件
@@ -562,6 +682,8 @@ subjects ──┬── timetable_slots
 | PUT | `/api/assignments/:id` | — | 修改作業（含標記完成） |
 | DELETE | `/api/assignments/:id` | — | 刪除作業 |
 
+> v3.8 起 `assignments` 在前端一律以「事件」名義呈現（僅 i18n 文案，內部識別名/表/路由不變）。`PUT /:id` 標記完成時只觸發徽章檢查（`checkBadges`），**不發放 XP、不觸發每日驚喜獎勵**（v3.8 Phase A2）。
+
 ---
 
 ### 考試 `/api/exams`（需 X-User-Id）
@@ -626,7 +748,7 @@ subjects ──┬── timetable_slots
 | GET | `/api/studylog/by-chapter` | 各章節累積讀書分鐘數 |
 | GET | `/api/studylog/heatmap` | 每日總分鐘數（`?days=` 天數，供全年熱力圖用）（v3.5） |
 | GET | `/api/studylog/monthly` | 各月各科目分鐘數（`?months=` 月數，供月趨勢圖用）（v3.5） |
-| GET | `/api/studylog/summary` | 累計分鐘、學習天數、平均每日（v3.5） |
+| GET | `/api/studylog/summary` | 累計分鐘、學習天數、平均每日；支援可選 `from`/`to` 日期篩選（皆給時依區間篩選，否則回全期總計）（v3.5，區間篩選 v3.9） |
 | GET | `/api/studylog/streak` | 目前連續學習天數（v3.5） |
 | GET | `/api/studylog/dashboard-stats` | 今日/本週分鐘、目標、連續天數（供儀表板一次載入）（v3.5） |
 | POST | `/api/studylog` | 新增記錄 |
@@ -797,6 +919,92 @@ subjects ──┬── timetable_slots
 
 ---
 
+### 學習區間 `/api/periods`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/periods` | 列出使用者所有區間（可用 `?school_year=` 篩選） |
+| GET | `/api/periods/current` | 回傳今天所在的區間（無命中回 `null`） |
+| POST | `/api/periods` | 新增/更新區間（`ON CONFLICT(user_id,school_year,type) DO UPDATE`），回應含 `overlap_warning` |
+| PUT | `/api/periods/:id` | 更新區間起訖日期 |
+| DELETE | `/api/periods/:id` | 刪除區間 |
+| GET | `/api/periods/:id/summary` | 該區間＋上一個區間的學習統計摘要（供對比） |
+
+> `type`：`semester1`（上學期）/ `winter`（寒假）/ `semester2`（下學期）/ `summer`（暑假）；`school_year` 為民國學年。
+
+---
+
+### 目標設定 `/api/goals`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/goals` | 列出目標，附計算後的 `progress`/`target`/`achieved`/`window` |
+| POST | `/api/goals` | 新增目標；若條件已滿足立即授予獎勵（建立時判定達成） |
+| PUT | `/api/goals/:id` | 更新目標（`goal_type` 不可修改） |
+| PATCH | `/api/goals/:id/toggle` | 手動勾選/取消（僅限 `text` 類型），完成時發放 XP |
+| DELETE | `/api/goals/:id` | 刪除目標 |
+
+> `goal_type`：`chapter`（章節進度次數）/ `grade`（成績分數）/ `text`（自由文字，手動勾選）；`horizon`：`short`/`mid`/`long`，完成時依期程發放 XP（見下方遊戲化模型）。
+
+---
+
+### 遊戲化 `/api/gamify`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/gamify/status` | XP/等級/稱號/combo/今日驚喜/進行中補救任務快照 |
+| GET | `/api/gamify/growth-summary` | 成長頁一次取得：狀態、累積讀書分鐘/章節、近 8 週 XP、飛輪四節點活躍度、periods 清單 |
+
+**遊戲化模型（規則常數，來源 `utils/xp.js`、`utils/gamify.js`、`utils/catchup.js`、`utils/streak.js`）**
+
+XP 規則：
+| 來源 | XP |
+|---|---|
+| 讀書每分鐘 | 1（每日上限 180） |
+| 作業每個 part 完成 | 3 |
+| 整筆作業完成（額外） | 5 |
+| 章節 session 完成 | 15（grantOnce 防重） |
+| 目標完成（短/中/長期） | 30 / 60 / 100 |
+| 補救任務完成 | 50（DB 欄位 `bonus_xp` 決定，預設 50） |
+
+等級公式：`MAX_LEVEL = 50`，每 5 級一個稱號（共 10 個稱號 tier）；升級所需 XP＝`100 + (level-1) * 75`（等差遞增），封頂於 50 級。
+
+Combo（連續天數倍率）：需先設定 `daily_goal_minutes`（>0）才會計算；combo 天數＝讀書分鐘達標的連續天數（含今/昨日寬限）；倍率＝`1 + 0.1 * min(天數,10)`，即每天 +10%，最高 10 天封頂 ×2.0。倍率套用於 XP 與驚喜點數；**不套用**於補救任務 `bonus_points`（固定值）；非當日補登的讀書紀錄只拿基礎 XP，不套 combo。
+
+每日驚喜獎勵：study（分鐘>0）／章節完成／作業全部完成時觸發，一天一次（`daily_reward_log` 唯一約束保證）。Tier 機率與點數：
+
+| Tier | 點數 | 機率 |
+|---|---|---|
+| 1 | +5  | 55% |
+| 2 | +10 | 30% |
+| 3 | +20 | 12% |
+| 4 | +50 | 3%  |
+
+實際入帳點數＝`round(tier點數 × combo倍率)`，寫入 `point_log`，reason=`surprise:<today>`。
+
+---
+
+### 逾期補救 `/api/catchup`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/catchup/status` | 逾期章節/作業統計、最舊逾期天數、近 7 天清除數、進行中任務 |
+| POST | `/api/catchup/plan` | 將逾期章節重新分配到未來 7 天，保留 `original_scheduled_date` |
+| POST | `/api/catchup/quest` | 接受補救任務（同時只能一個進行中），快照逾期項目 |
+
+> 目標數＝`min(逾期章節數+逾期作業數, 5)`；期限＝接受當天 + 3 天；任一逾期章節/作業完成時檢查進度，達標即發放 `bonus_points`（point_log，flat，不套 combo）與 `bonus_xp`（xp_log，套用 combo 倍率）；逾期不扣罰，只是任務狀態轉為 `expired`。
+
+---
+
+### 學習歷程報告 `/api/report`（需 X-User-Id）
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/api/report/summary?from=&to=` | 報告資料：總覽/科目/成績/目標/徽章/月趨勢/等級快照，範圍上限 400 天 |
+| GET | `/api/report/weekly-recap` | 上一個完整週 vs 前一週的統計比較＋精選亮點（永不顯示退步） |
+
+---
+
 ### 備份與還原 `/api/backup`
 
 | 方法 | 路徑 | 說明 |
@@ -834,6 +1042,9 @@ subjects ──┬── timetable_slots
 | `/app#shop` | 獎勵商店 | `shop.js` |
 | `/app#subjects` | 課程資訊 | `subjects.js` |
 | `/app#print` | 列印週計畫 | `print.js` |
+| `/app#goals` | 目標設定 | `goals.js` |
+| `/app#growth` | 成長軌跡 | `growth.js` |
+| `/app#report` | 學習歷程報告 | `report.js` |
 
 ### 共用模組
 
@@ -864,6 +1075,12 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 #### `router.js`
 監聽 `hashchange` 事件，依 hash 動態載入對應頁面模組的 `render(el)` 函式，並更新側邊欄 active 狀態與頁面標題。同時監聽 `langchange` 事件，切換語系時立即重新 render 當前頁面並更新靜態字串。
 
+#### `gamify-ui.js`（v3.6）
+非頁面模組，共用 UI 片段（等級卡 `levelCard` 等），供今日概覽與成長軌跡頁共用，無獨立 route。
+
+#### `period-filter.js`（v3.9）
+非頁面模組，共用「區間篩選 chip 列」元件，供考試倒數／作業清單／讀書時間／讀書進度四個明細頁使用；選擇的區間存於 `localStorage` key `periodScope`，跨頁同步；無獨立 route。
+
 ### 頁面功能說明
 
 #### 個人檔案選擇（index.html）
@@ -882,6 +1099,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **未完成（逾期）**：過去日期未完成的作業，以紅色左邊框標示，按日期分組
 - **即將到來**：未來日期的作業，按日期分組
 - 完成最後一個部份（或整筆作業）→ 觸發 checkBadges，若達成條件解鎖作業類徽章
+- 可依學習區間過濾（`period-filter.js` 篩選 chip 列，v3.9）
 
 #### 今日概覽（#dashboard）
 - **今日課表**：顯示當天節次與科目
@@ -919,6 +1137,7 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 每筆考試下方顯示對應科目的讀書進度條：預習完成比例（藍）與複習完成比例（綠），格式為 `已完成章節 / 總章節數`；若科目尚無章節則不顯示
 - 「已過期」區塊頂部有「清除已過期」按鈕，確認後一次將所有過期考試標為完成
 - 可新增、編輯、標記完成、刪除
+- 可依學習區間過濾（`period-filter.js` 篩選 chip 列，v3.9）
 
 #### 讀書進度（#chapters）
 - 以科目為群組的折疊表格（Accordion）
@@ -929,12 +1148,14 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - 顯示該章節累積讀書時間（來自讀書時間記錄）
 - Accordion header 顯示各科目的預習/複習完成比例
 - Accordion 底部有「🗑 刪除此科目所有章節」按鈕，確認後批次刪除該科目所有章節（chapter_progress 連帶清除）
+- 可依學習區間過濾（`period-filter.js` 篩選 chip 列，v3.9）
 
 #### 讀書時間（#studylog）
 - **手動記錄**：選科目、章節（選填）、日期、分鐘數
 - **碼錶計時**：開始/暫停計時，停止後存入記錄，同樣可關聯科目與章節
 - 近 7 天讀書時間柱狀圖（各科目堆疊）
 - 記錄列表（含章節欄位）
+- 可依學習區間過濾（`period-filter.js` 篩選 chip 列，v3.9）
 
 #### 成績紀錄（#grades）
 - 成績趨勢折線圖，可依科目篩選
@@ -974,6 +1195,23 @@ daysLeft(dateStr)    — 計算距離某日期的剩餘天數
 - **本週讀書計畫**：本週排定日期的預習/複習項目表格（日期、科目、章節、類型、完成狀態）
 - **頁尾**：系統名稱與使用者・日期
 - 紙張規格：`@page { size: 297mm 210mm landscape; margin: 2mm; }`；螢幕預覽同樣以 297mm 顯示；科目色彩透過 `print-color-adjust: exact` 確保正確輸出
+
+#### 目標設定（#goals，v3.9）
+- CRUD 短/中/長期目標：`chapter`（章節進度次數）、`grade`（成績分數）、`text`（自由文字，手動勾選完成）三種類型
+- 可選擇綁定一個學習區間（period），決定目標的評估視窗；亦可管理 periods（建立/選擇學年區間：上學期/寒假/下學期/暑假）
+- 目標列表顯示計算後的進度（progress/target），達成時發放對應期程的 XP（短 30／中 60／長 100）
+- `text` 類型可手動勾選/取消完成狀態；`chapter`／`grade` 類型依實際資料自動判定達成
+
+#### 成長軌跡（#growth，v3.9）
+- 等級卡：目前 XP、等級、稱號、距下一級所需 XP（與 `gamify-ui.js` 共用元件）
+- 飛輪四節點活躍度：讀書、章節、作業、目標的近期活躍程度
+- 累積成長折線圖、近 8 週 XP 長條圖
+- 可切換學習區間，對比不同區間（如上學期 vs 下學期）的統計數據
+
+#### 學習歷程報告（#report，v3.9）
+- 產生可列印的 **A4 直式**學習歷程報告，涵蓋指定日期範圍（`from`/`to`，上限 400 天）
+- 內容涵蓋：總覽、各科目統計、成績趨勢、目標達成情形、獲得徽章、月趨勢、等級快照
+- 與列印週計畫（#print，橫式）並存不衝突，named `@page reportPage`，報告本體恆白底以利列印
 
 #### 語系切換
 - 側邊欄底部顯示三個語系按鈕：**中**（正體中文）、**EN**（English）、**日**（日本語）
@@ -1093,4 +1331,4 @@ ipconfig
 
 ---
 
-*本文件反映截至 2026-06-01 的實作狀態（v3.1）。*
+*本文件反映截至 2026-07-11 的實作狀態（v3.9）。*

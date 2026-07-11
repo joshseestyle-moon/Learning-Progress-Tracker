@@ -1,6 +1,6 @@
 # 學習管理系統 — 技術規格文件
 
-> 版本：3.5　　最後更新：2026-07-08  
+> 版本：3.9　　最後更新：2026-07-11  
 > 本文件描述系統實作層面的技術細節，補充 `SYSTEM_DOC.md` 未涵蓋的內部機制。
 
 ---
@@ -23,6 +23,7 @@
 14. [資料庫遷移機制](#14-資料庫遷移機制)
 15. [瀏覽器相容性](#15-瀏覽器相容性)
 16. [資料庫完整結構參考](#16-資料庫完整結構參考)
+17. [遊戲化機制](#17-遊戲化機制)
 
 ---
 
@@ -111,6 +112,8 @@ badges/
 
 utils/
   points.js                      ← getBalance(userId)，routes/badges 與 routes/shop 共用
+  goalProgress.js                ← 純函式 goalWindow()（目標評估視窗：綁定 period 用其起訖，否則用建立日~到期日）、
+                                     computeProgress()，供 routes/goals.js 共用邏輯
 ```
 
 所有 routes 透過 `app.use('/api/<resource>', router)` 掛載，彼此隔離。
@@ -135,6 +138,8 @@ router.js
 ```
 
 所有頁面模組在 `app.html` 載入時就被瀏覽器解析，但僅在路由觸發時才執行 `render(el)`。
+
+**共用非頁面模組**（無獨立 route，被多個頁面模組 import）：`period-filter.js` 提供區間篩選 chip 列 UI，選擇結果存於 `localStorage` key `periodScope`，供 `exams`/`homework`/`studylog`/`chapters` 四個明細頁共用並跨頁同步。
 
 ---
 
@@ -722,7 +727,9 @@ CREATE INDEX idx_badge_exchange_log_user_badge ON badge_exchange_log(user_id, ba
 
 遷移在 `db/db.js` 啟動時自動執行，無需手動操作或外部工具。每次遷移檢查**目前 schema 狀態**，而非版本號碼，確保冪等性（多次執行安全）。
 
-### 已實作的 18 個遷移
+### 已實作的 25 個遷移
+
+（本節詳列 Migration 1–12；Migration 13–14 摘要：M13 `custom_badges` 加 `category`、M14 徽章兌換紀錄表 `badge_exchange_log`，詳見 `db.js:166-269`。Migration 15 起的詳細內容附於 §16 資料庫完整結構參考末尾，緊接各資料表定義之後，方便對照 schema。）
 
 #### Migration 1：課表欄位重構
 
@@ -1216,6 +1223,8 @@ for (const c of chapters) {
 
 > 原始定義：`db/schema.sql`（全新安裝時執行）；欄位變更透過 `db/db.js` 的 Migration 自動套用。
 
+> **重要落差**：`db/schema.sql` 只停留在最初版 schema（`users`/`subjects`/`timetable_slots`/`assignments`/`exams`/`chapters`/`chapter_progress`/`study_log`/`grades`）。Migration 9 之後新增的所有資料表與欄位（`user_badges`、`point_log` 系列、`custom_badges` 系列、`daily_tasks` 系列、`periods`、`goals`、`xp_log`、`daily_reward_log`、`catchup_quests` 系列，以及既有表新增欄位如 `subjects.category`、`chapter_progress.original_scheduled_date`）**只存在於 `db/db.js` 的 migration 程式碼內**，`schema.sql` 並未同步更新。本文件若要展示完整、可信的 schema，須以 `db.js` 的 migrations 為權威來源，不能只讀 `schema.sql`。
+
 ---
 
 ### 資料表關聯圖（ER）
@@ -1287,6 +1296,7 @@ CREATE TABLE subjects (
     name       TEXT    NOT NULL,
     color      TEXT    NOT NULL DEFAULT '#4a90d9',
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    -- category（Migration 19）由遷移新增
 );
 CREATE INDEX idx_subjects_user ON subjects(user_id);
 ```
@@ -1297,6 +1307,7 @@ CREATE INDEX idx_subjects_user ON subjects(user_id);
 | `user_id` | INTEGER FK | — | 所屬使用者；每人科目完全獨立（Migration 8 加入） |
 | `name` | TEXT | — | 科目名稱，如「數學」、「英文」 |
 | `color` | TEXT | `#4a90d9` | 代表色，用於課表、考試、行事曆色票 |
+| `category` | TEXT | `'exam'` | 考科 `exam` / 非考科 `non_exam`（Migration 19），影響部分統計是否納入計算 |
 | `created_at` | TEXT | `datetime('now')` | — |
 
 **刪除行為**：刪除科目會 CASCADE 刪除相關的 timetable_slots、assignments、exams、chapters（及 chapter_progress）。
@@ -1441,6 +1452,7 @@ CREATE TABLE chapter_progress (
     done_at        TEXT,
     notes          TEXT,
     UNIQUE(user_id, chapter_id, type, seq)
+    -- original_scheduled_date（Migration 25）由遷移新增
 );
 CREATE INDEX idx_chapter_progress_user ON chapter_progress(user_id);
 ```
@@ -1455,6 +1467,7 @@ CREATE INDEX idx_chapter_progress_user ON chapter_progress(user_id);
 | `is_done` | INTEGER | 0=未完成，1=已完成 |
 | `done_at` | TEXT | 完成時間（toggle 為完成時記錄） |
 | `notes` | TEXT | 學習備註（可為空），顯示於讀書進度與列印頁 |
+| `original_scheduled_date` | TEXT | 補救排程前的原始到期日（可為空，Migration 25）；供「曾逾期後清除」判斷（`utils/catchup.js` 的 `LATE_CLEARED_PREDICATE`）與相關徽章使用 |
 
 **UNIQUE 約束**：`(user_id, chapter_id, type, seq)` — 同一使用者同一章節的預習只有一筆（seq 固定=1），複習可有多筆（seq 遞增）。  
 **API 操作**：
@@ -1549,6 +1562,152 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 
 ---
 
+### 資料表：`periods`（Migration 20）
+
+```sql
+CREATE TABLE periods (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    school_year INTEGER NOT NULL,
+    type        TEXT    NOT NULL CHECK(type IN ('semester1','winter','semester2','summer')),
+    start_date  TEXT    NOT NULL,
+    end_date    TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, school_year, type)
+);
+CREATE INDEX idx_periods_user ON periods(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `school_year` | INTEGER | 民國學年 |
+| `type` | TEXT | `semester1` / `winter` / `summer` / `semester2` |
+| `start_date` / `end_date` | TEXT | 使用者自訂日期範圍（YYYY-MM-DD） |
+
+**UNIQUE 約束**：`(user_id, school_year, type)`，同一學年同一類型區間只有一筆。`POST /api/periods` 用 `ON CONFLICT ... DO UPDATE` upsert，並回傳 `overlap_warning`（`routes/periods.js:65-90`）。  
+**用途**：goals、report summary、exams/homework/studylog/chapters 明細頁的區間篩選皆以此表的 start/end 為準（見 §17）。
+
+---
+
+### 資料表：`goals`（Migration 21）
+
+```sql
+CREATE TABLE goals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title        TEXT    NOT NULL,
+    goal_type    TEXT    NOT NULL CHECK(goal_type IN ('chapter','grade','text')),
+    horizon      TEXT    NOT NULL DEFAULT 'short' CHECK(horizon IN ('short','mid','long')),
+    period_id    INTEGER REFERENCES periods(id) ON DELETE SET NULL,
+    subject_id   INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+    exam_type    TEXT,
+    target_value INTEGER,
+    due_date     TEXT,
+    is_done      INTEGER NOT NULL DEFAULT 0,
+    done_at      TEXT,
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_goals_user ON goals(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `goal_type` | TEXT | `chapter`（章節進度）/ `grade`（成績）/ `text`（自由文字） |
+| `horizon` | TEXT | `short` / `mid` / `long`，對應 XP 獎勵 30 / 60 / 100（見 §17） |
+| `period_id` | FK（可NULL） | 綁定的區間；區間刪除時 SET NULL |
+| `exam_type` | TEXT | 僅 `grade` 目標使用 |
+| `target_value` | INTEGER | `chapter`=次數；`grade`=分數；`text` 目標為 null |
+| `is_done` | INTEGER | 僅 `text` 類型由使用者手動勾選（`PATCH /:id/toggle`），`chapter`/`grade` 類型由 `utils/goalProgress.js` 依即時查詢計算完成度 |
+
+**無 UNIQUE 約束**（可重複建立同類型目標）。**評估視窗**：`goalWindow()` 決定目標評估的日期範圍——若綁定 `period_id` 則為該區間 `[start_date, end_date]`；否則為 `[created_at, due_date 或不設上限]`（`utils/goalProgress.js:16-19`）。
+
+---
+
+### 資料表：`xp_log`（Migration 22）
+
+```sql
+CREATE TABLE xp_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta      INTEGER NOT NULL,
+    reason     TEXT    NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_xp_log_user ON xp_log(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `delta` | INTEGER | XP 增量（永久成長值，與可花費的 `point_log` 分離） |
+| `reason` | TEXT | 慣例：`study:<id>`、`chapter:<progressId>`、`task:<taskId>:<partNum\|done>`、`goal:<id>`、`quest:<questId>` |
+
+**無 UNIQUE 約束**，防重靠 `reason` 字串 + `grantOnce()`（查詢 `xp_log` 是否已有該 reason）。Migration 22 同時執行一次性回填：歷史讀書分鐘（每日上限 180 XP）與已完成章節（15 XP/個）。
+
+---
+
+### 資料表：`daily_reward_log`（Migration 23）
+
+```sql
+CREATE TABLE daily_reward_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reward_date TEXT   NOT NULL,
+    tier       INTEGER NOT NULL,
+    points     INTEGER NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, reward_date)
+);
+CREATE INDEX idx_daily_reward_user ON daily_reward_log(user_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `tier` | INTEGER | 1–4，對應驚喜獎勵 tier（見 §17） |
+| `points` | INTEGER | 已套用 combo 倍率後的實際入帳點數 |
+
+**UNIQUE 約束**：`(user_id, reward_date)` 是「每日驚喜獎勵一天一次」機制的根基，寫入用 `INSERT OR IGNORE`，`changes===1` 才算中獎（`gamify.js:131-147`）。
+
+---
+
+### 資料表：`catchup_quests` / `catchup_quest_items`（Migration 24）
+
+```sql
+CREATE TABLE catchup_quests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title         TEXT    NOT NULL,
+    target_count  INTEGER NOT NULL,
+    deadline_date TEXT    NOT NULL,
+    bonus_points  INTEGER NOT NULL DEFAULT 30,
+    bonus_xp      INTEGER NOT NULL DEFAULT 50,
+    status        TEXT    NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','expired')),
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    completed_at  TEXT
+);
+CREATE INDEX idx_catchup_quests_user ON catchup_quests(user_id);
+
+CREATE TABLE catchup_quest_items (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    quest_id INTEGER NOT NULL REFERENCES catchup_quests(id) ON DELETE CASCADE,
+    kind     TEXT    NOT NULL CHECK(kind IN ('chapter','task')),
+    item_id  INTEGER NOT NULL,
+    UNIQUE(quest_id, kind, item_id)
+);
+CREATE INDEX idx_catchup_quest_items_quest ON catchup_quest_items(quest_id);
+```
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `title` | TEXT | 固定文案「補救挑戰」 |
+| `target_count` | INTEGER | 目標完成數，`min(逾期章節數+逾期作業數, 5)` |
+| `deadline_date` | TEXT | 接受任務當天 + 3 天 |
+| `status` | TEXT | `active`（同時只能一個）/ `completed` / `expired`（逾期不扣罰，懶惰轉態） |
+| `catchup_quest_items.item_id` | INTEGER | 對應 `chapter_progress.id` 或 `daily_tasks.id`，接受任務當下的快照（之後項目異動不影響快照） |
+
+**用途**：逾期章節/作業的補救挑戰機制，見 §17「補救任務」。
+
+---
+
 ### 索引總表
 
 | 索引名稱 | 資料表 | 欄位 | 用途 |
@@ -1568,6 +1727,12 @@ CREATE INDEX idx_user_badges_user ON user_badges(user_id);
 | `idx_custom_badge_earned_user` | `custom_badge_earned` | `(user_id)` | 查詢自訂成就完成狀態 |
 | `idx_badge_exchange_log_user` | `badge_exchange_log` | `(user_id)` | — |
 | `idx_badge_exchange_log_user_badge` | `badge_exchange_log` | `(user_id, badge_id)` | 批次查今日已兌換清單（v3.4） |
+| `idx_periods_user` | `periods` | `(user_id)` | 查詢使用者所有學期/寒暑假區間 |
+| `idx_goals_user` | `goals` | `(user_id)` | 查詢使用者目標列表 |
+| `idx_xp_log_user` | `xp_log` | `(user_id)` | 計算使用者累積 XP（SUM delta）、近 N 週 XP 趨勢 |
+| `idx_daily_reward_user` | `daily_reward_log` | `(user_id)` | 查詢每日驚喜獎勵紀錄 |
+| `idx_catchup_quests_user` | `catchup_quests` | `(user_id)` | 查詢使用者補救任務（含進行中判斷） |
+| `idx_catchup_quest_items_quest` | `catchup_quest_items` | `(quest_id)` | 依任務查快照項目、計算進度 |
 
 ---
 
@@ -1658,6 +1823,127 @@ if (!userCols2.includes('weekly_goal_minutes'))
 
 > 目標以分鐘儲存，`0` 代表未設定。讀書分析端點（`/studylog/summary`、`/heatmap`、`/monthly`、`/streak`、`/dashboard-stats`）為唯讀彙整查詢；連續天數與間隔複習日期分別由純函式 `utils/streak.js`、`utils/srs.js` 計算（有 `node:test` 測試覆蓋）。
 
+#### Migration 19：科目新增 `category`（考科／非考科）
+
+**觸發條件**：`subjects` 缺少 `category` 欄位
+
+**處理方式**：`ALTER TABLE ADD COLUMN`
+
+```js
+db.exec("ALTER TABLE subjects ADD COLUMN category TEXT NOT NULL DEFAULT 'exam'");
+```
+
+> `'exam'`（考科）或 `'non_exam'`（非考科），預設 `'exam'`（db.js:322-326）。
+
+#### Migration 20：新表 `periods`（學期/寒暑假區間）
+
+**觸發條件**：`periods` 資料表不存在
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` + 索引（db.js:328-341）；欄位與 UNIQUE 約束見 §16「資料表：`periods`」。
+
+> 使用者自訂日期範圍，`(user_id, school_year, type)` 唯一。供 goals、report、明細頁區間篩選使用。
+
+#### Migration 21：新表 `goals`（章節進度／成績／自由文字目標）
+
+**觸發條件**：`goals` 資料表不存在
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` + 索引（db.js:343-361）；完整結構見 §16「資料表：`goals`」。
+
+#### Migration 22：新表 `xp_log`（永久成長 XP）＋一次性回填
+
+**觸發條件**：`xp_log` 資料表不存在
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` + 索引，並一次性回填歷史讀書分鐘（每日上限 180 XP）與已完成章節（15 XP/個）至 `xp_log`（db.js:363-394）。
+
+> XP 與可花費的 `point_log` 分離：XP 只增不減、代表永久成長；`point_log` 可花費（兌換商店）。詳見 §17「遊戲化機制」。
+
+#### Migration 23：新表 `daily_reward_log`（每日驚喜獎勵）
+
+**觸發條件**：`daily_reward_log` 資料表不存在
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` + 索引（db.js:396-409）；`UNIQUE(user_id, reward_date)` 是「一天一次」機制的根基。完整結構見 §16。
+
+#### Migration 24：新表 `catchup_quests` + `catchup_quest_items`（補救任務）
+
+**觸發條件**：`catchup_quests` 資料表不存在
+
+**處理方式**：`CREATE TABLE IF NOT EXISTS` 兩張表 + 索引（db.js:411-435）；接受任務時快照當下逾期項目 id，之後項目異動不影響快照。完整結構見 §16。
+
+#### Migration 25：章節進度新增 `original_scheduled_date`
+
+**觸發條件**：`chapter_progress` 缺少 `original_scheduled_date` 欄位
+
+**處理方式**：`ALTER TABLE ADD COLUMN`（db.js:437-443）
+
+```js
+db.exec('ALTER TABLE chapter_progress ADD COLUMN original_scheduled_date TEXT');
+```
+
+> 保留補救排程前的原始到期日，供「曾逾期後清除」判斷（`utils/catchup.js` 的 `LATE_CLEARED_PREDICATE`）與相關徽章使用。
+
 ---
 
-*本文件反映截至 2026-07-08 的實作狀態（v3.5）。*
+## 17. 遊戲化機制
+
+> 來源：`utils/xp.js`、`utils/gamify.js`、`utils/catchup.js`、`utils/streak.js`。本節常數與規則皆可由程式碼回溯（檔案:行號附於各段），機率/倍率數值僅讀自程式碼常數，未做大量取樣的統計驗證。
+
+### XP 規則（`utils/xp.js:8-16` `XP_RULES`）
+
+| 項目 | 數值 | 說明 |
+|---|---|---|
+| `studyPerMinute` | 1 | 每讀書 1 分鐘 = 1 XP |
+| `studyDailyCap` | 180 | 讀書 XP 每日上限（依當日 `xp_log` 中 `study:%` reason 加總計算，xp.js:8-10、gamify.js:111-120） |
+| `taskPart` | 3 | 作業每個 part 完成 = 3 XP |
+| `taskComplete` | 5 | 整個 task 完成時，在 part XP 之外額外 +5 |
+| `chapterDone` | 15 | 章節 session 完成 = 15 XP（`grantOnce` 防重） |
+| `goal.short` / `.mid` / `.long` | 30 / 60 / 100 | 依目標期程（horizon）授予的一次性 XP |
+| `questDefault` | 50 | 備用預設值；實際補救任務 `bonus_xp` 由 DB 欄位決定（預設同為 50） |
+
+### 等級公式（`xp.js:19-39`）
+
+- `MAX_LEVEL = 50`，`TITLE_TIERS = 10`（每 5 級一個稱號 tier，i18n key `level.title.1` ~ `level.title.10`）
+- 升級所需 XP：`xpToAdvance(level) = 100 + (level-1) * 75`（等差遞增：Lv1→2 需 100 XP，Lv2→3 需 175 XP，以此類推）
+- 封頂於 level 50，封頂後 `toNext = 0`
+
+### Combo（連續達標天數 → XP／點數倍率，`streak.js:45-53`、`gamify.js:33-43`）
+
+- 前提：使用者已設定 `daily_goal_minutes`（> 0），否則 combo 恆為 0
+- combo 天數 = 「讀書分鐘數達到當日目標」的連續天數（含今日或昨日寬限，同 `computeCurrentStreak` 規則）
+- 倍率：`comboMultiplier(days) = 1 + 0.1 * min(max(days,0), 10)` —— **每連續一天 +10%，第 10 天封頂 ×2.0**
+- 套用範圍：一般 XP 與驚喜點數皆套用（`pts = round(roll.points * mult)`，gamify.js:138）；補救任務 `bonus_points` **不套用**（固定值，gamify.js:159 明註「bonus points are flat」）；**backdated（非當日）讀書紀錄不套用 combo 倍率**，只拿基礎 XP（gamify.js:116）
+
+### 驚喜獎勵 Surprise（`xp.js:41-58`、`gamify.js:131-147`）
+
+- 觸發條件：讀書分鐘 > 0／章節完成／作業全部完成（`qualifies` 判斷，gamify.js:132-135）
+- 一天一次：靠 `daily_reward_log` 的 `UNIQUE(user_id, reward_date)` + `INSERT OR IGNORE`，`changes===1` 才算中獎
+- Tier 機率與點數（`SURPRISE_TIERS`，xp.js:42-47）：
+
+  | Tier | 點數 | 機率 |
+  |---|---|---|
+  | 1 | +5 | 55% |
+  | 2 | +10 | 30% |
+  | 3 | +20 | 12% |
+  | 4 | +50 | 3% |
+
+- 實際入帳點數 = `round(tier點數 * combo倍率)`，寫入 `point_log`，`reason = surprise:<today>`
+
+### 補救任務 Catch-up Quest（`routes/catchup.js:7-10`、`gamify.js:153-171,217-236`）
+
+- 常數（寫死於 route 層，非 `xp.js`）：`QUEST_BONUS_POINTS = 30`、`QUEST_BONUS_XP = 50`、`QUEST_MAX_TARGET = 5`、`QUEST_DAYS = 3`
+- 觸發：使用者主動 `POST /api/catchup/quest` 接受任務；同時只能有一個 `status='active'` 的任務（已有則 409）
+- 目標數 = `min(逾期章節數 + 逾期作業數, 5)`；期限 = 接受當天 + 3 天
+- 進度判定：`questProgress()` 統計快照項目中已完成的 `chapter_progress`/`daily_tasks` 數（gamify.js:228-236）
+- 完成時機：任一 chapter/task 事件觸發 `processActivity` 時檢查進度是否達標，達標則 `status → 'completed'`，發放 `bonus_points`（寫入 `point_log`，flat 值不套 combo，gamify.js:159-161）與 `bonus_xp`（寫入 `xp_log`，走 `grantOnce(quest.bonus_xp, 'quest:'+quest.id)`；`grantOnce` 第三參數省略時吃閉包內的 `mult`，即 **quest 的 `bonus_xp` 會套用 combo 倍率**，與 `bonus_points` 的 flat 處理不同——已依程式碼簽章確認，非推測，gamify.js:56,163）
+- 過期：不扣罰，`deadline_date < today` 時懶惰轉 `status='expired'`（`getActiveQuest`，鼓勵導向、無懲罰機制）
+
+### Streak／Goals／Periods 關係
+
+- `localToday()`（streak.js:58）是全系統「今天」的單一來源，供 gamify/checker/routes 共用
+- `computeCurrentStreak`：連續讀書天數，含「今天或昨天」寬限（缺一天內不算斷）
+- `computeMaxStreak`：歷史最長連續讀書天數（供報告頁 `max_streak` 使用）
+- `goals` 可選擇性綁定一個 `period`（`goals.period_id`）；`goalWindow()` 決定目標評估視窗：**若綁定 period，視窗 = period 的 `[start_date, end_date]`；否則 = `[目標建立日, due_date 或不設上限]`**（`utils/goalProgress.js:16-19`）
+- `periods` 為使用者自訂的學期/寒暑假日期範圍，`(user_id, school_year, type)` 唯一；`goals`、report summary、exams/homework/studylog/chapters 明細頁的區間篩選皆以 `periods` 的 start/end 為準
+
+---
+
+*本文件反映截至 2026-07-11 的實作狀態（v3.9）。*
