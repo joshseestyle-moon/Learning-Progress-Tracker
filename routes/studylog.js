@@ -5,6 +5,8 @@ const { processActivity } = require('../utils/gamify');
 const { computeCurrentStreak } = require('../utils/streak');
 const { clampText, LIMITS } = require('../utils/validate');
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 router.get('/', userCtx, (req, res) => {
   let sql = `SELECT sl.*, s.name AS subject_name, s.color AS subject_color,
              c.title AS chapter_title
@@ -75,6 +77,11 @@ router.get('/monthly', userCtx, (req, res) => {
 router.get('/summary', userCtx, (req, res) => {
   // Optional period scope: both from & to must be given, else the all-time totals.
   const { from, to } = req.query;
+  if (from || to) {
+    if (!DATE_RE.test(from || '') || !DATE_RE.test(to || '')) {
+      return res.status(400).json({ error: '日期區間格式錯誤' });
+    }
+  }
   let where = 'WHERE user_id = ?';
   const params = [req.userId];
   if (from && to) { where += ' AND log_date >= ? AND log_date <= ?'; params.push(from, to); }
