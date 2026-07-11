@@ -10,6 +10,7 @@ let periods = [];
 let subjects = [];
 let currentPeriod = null;
 let selectedYear = null;
+let _gen = 0;
 
 function defaultSchoolYear() {
   const m = new Date().getMonth() + 1;
@@ -26,6 +27,7 @@ function periodLabel(type) {
 }
 
 export async function render(el) {
+  const gen = ++_gen;
   if (selectedYear == null) selectedYear = defaultSchoolYear();
   [goals, periods, subjects, currentPeriod] = await Promise.all([
     get('/goals'),
@@ -33,6 +35,7 @@ export async function render(el) {
     get('/subjects'),
     get('/periods/current'),
   ]);
+  if (gen !== _gen) return; // superseded by a newer render() call
   el.innerHTML = buildPage();
   attachEvents(el);
 }

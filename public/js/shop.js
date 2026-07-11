@@ -13,6 +13,7 @@ let state = {
 };
 
 let _el = null;
+let _gen = 0;
 
 async function loadAll() {
   const [pts, items, hist] = await Promise.all([
@@ -229,14 +230,17 @@ function tabBtn(id) {
 }
 
 export async function render(el) {
+  const gen = ++_gen;
   _el = el;
 
   if (!state.items.length && !state.history.length && state.points === 0) {
     el.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--text3)">${t('app.loading')}</div>`;
     try { await loadAll(); } catch (e) {
+      if (gen !== _gen) return; // superseded by a newer render() call
       el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
       return;
     }
+    if (gen !== _gen) return; // superseded by a newer render() call
   }
 
   el.innerHTML = `

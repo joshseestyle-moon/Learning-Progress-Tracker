@@ -5,6 +5,7 @@ const GOAL_ICONS = { chapter: '📖', grade: '🏆', text: '✏️' };
 
 let _periods = [];
 let _mode = 'year';
+let _gen = 0;
 
 function currentSchoolYear() {
   const d = new Date();
@@ -36,9 +37,11 @@ function fmtMinutes(min) {
 }
 
 export async function render(el) {
+  const gen = ++_gen;
   document.body.classList.add('report-print');
   el.innerHTML = `<div class="empty-state"><div class="icon">⏳</div>${t('app.loading')}</div>`;
   _periods = await get('/periods');
+  if (gen !== _gen) return; // superseded by a newer render() call
 
   el.innerHTML = `
     <div class="print-controls no-print" style="flex-wrap:wrap;gap:.6rem;align-items:center;">
@@ -111,6 +114,7 @@ function pickRange(el) {
 }
 
 async function generate(el) {
+  const gen = ++_gen;
   const range = pickRange(el);
   const body = el.querySelector('#report-body');
   if (!range) { body.innerHTML = ''; return; }
@@ -119,9 +123,11 @@ async function generate(el) {
   try {
     data = await get(`/report/summary?from=${range.from}&to=${range.to}`);
   } catch (e) {
+    if (gen !== _gen) return; // superseded by a newer generate() call
     body.innerHTML = `<div class="card"><p style="color:var(--danger)">${escHtml(e.message)}</p></div>`;
     return;
   }
+  if (gen !== _gen) return; // superseded by a newer generate() call
   body.innerHTML = renderReport(data);
   el.querySelector('#report-print').disabled = false;
 

@@ -6,8 +6,12 @@ import { t } from './i18n.js';
 import { levelCard } from './gamify-ui.js';
 import { periodLabel } from './period-filter.js';
 
+let _gen = 0;
+
 export async function render(el) {
+  const gen = ++_gen;
   const data = await get('/gamify/growth-summary');
+  if (gen !== _gen) return; // superseded by a newer render() call
   el.innerHTML = `
     <div class="dashboard-grid">
       <div class="card">

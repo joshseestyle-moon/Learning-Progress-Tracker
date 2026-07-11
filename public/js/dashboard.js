@@ -3,6 +3,7 @@ import { t } from './i18n.js';
 import { levelCard } from './gamify-ui.js';
 
 let _el = null;
+let _gen = 0;
 
 function tomorrow() {
   const d = new Date();
@@ -11,6 +12,7 @@ function tomorrow() {
 }
 
 export async function render(el) {
+  const gen = ++_gen;
   _el = el;
   const todayStr    = today();
   const tomorrowStr = tomorrow();
@@ -31,9 +33,11 @@ export async function render(el) {
       get('/report/weekly-recap'),
     ]);
   } catch (e) {
+    if (gen !== _gen) return; // superseded by a newer render() call
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
   }
+  if (gen !== _gen) return; // superseded by a newer render() call
 
   const progressMap = {};
   for (const c of chapters) {

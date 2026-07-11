@@ -3,6 +3,7 @@ import { t, getLang } from './i18n.js';
 
 let currentYear, currentMonth;
 let subjects = [];
+let _gen = 0;
 
 export async function render(el) {
   const now = new Date();
@@ -13,6 +14,7 @@ export async function render(el) {
 }
 
 async function renderMonth(el) {
+  const gen = ++_gen;
   const mm = String(currentMonth + 1).padStart(2, '0');
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const [assignments, exams, scheduled, tasks] = await Promise.all([
@@ -21,6 +23,7 @@ async function renderMonth(el) {
     get('/chapters/scheduled'),
     get(`/daily-tasks?from=${currentYear}-${mm}-01&to=${currentYear}-${mm}-${String(daysInMonth).padStart(2, '0')}`),
   ]);
+  if (gen !== _gen) return; // superseded by a newer renderMonth() call
 
   const byDate = {};
   for (const a of assignments) {

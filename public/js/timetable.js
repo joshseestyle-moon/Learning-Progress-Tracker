@@ -6,6 +6,7 @@ const PERIODS = Array.from({ length: 10 }, (_, i) => i + 1);
 let subjects = [];
 let slots = [];
 let currentYear, currentSem;
+let _gen = 0;
 
 function currentPeriod() {
   const m = new Date().getMonth() + 1;
@@ -20,18 +21,23 @@ function DAYS() {
 }
 
 export async function render(el) {
+  const gen = ++_gen;
   const ap = currentPeriod();
   currentYear = ap.year;
   currentSem  = ap.semester;
   subjects = await get('/subjects');
   slots    = await get(`/timetable?school_year=${currentYear}&semester=${currentSem}`);
+  if (gen !== _gen) return; // superseded by a newer render() call
   el.innerHTML = buildPage();
   attachEvents(el);
 }
 
 async function reloadSlots(el) {
+  const gen = ++_gen;
   slots = await get(`/timetable?school_year=${currentYear}&semester=${currentSem}`);
-  el.querySelector('tbody').innerHTML = buildTbody();
+  const tbody = el.querySelector('tbody');
+  if (!tbody || gen !== _gen) return; // navigated away, or superseded by a newer call
+  tbody.innerHTML = buildTbody();
   attachCells(el);
 }
 

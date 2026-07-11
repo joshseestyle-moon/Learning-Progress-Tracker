@@ -9,9 +9,26 @@ let _el = null;
 let _badges = [];
 let _showForm = false;
 let _formError = '';
+let _gen = 0;
 
 async function load() {
   _badges = await get('/badges');
+}
+
+// Shared by render() and every mutation handler below: refetch + redraw,
+// bailing if a newer call (rapid re-click, or navigating away and back)
+// has superseded this one by the time the fetch resolves.
+async function reload() {
+  const gen = ++_gen;
+  try {
+    await load();
+  } catch (e) {
+    if (gen !== _gen) return;
+    _el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
+    return;
+  }
+  if (gen !== _gen) return;
+  renderPage();
 }
 
 function badgeCard(b) {
@@ -208,13 +225,7 @@ export async function render(el) {
   _showForm = false;
   _formError = '';
   el.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--text3)">${t('app.loading')}</div>`;
-  try {
-    await load();
-  } catch (e) {
-    el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
-    return;
-  }
-  renderPage();
+  await reload();
 }
 
 // ── Global handlers ──
@@ -251,8 +262,7 @@ window.badgeAddCustom = async function() {
     await post('/badges/custom', { name, icon, desc, points, category });
     _showForm = false;
     _formError = '';
-    await load();
-    renderPage();
+    await reload();
   } catch (e) {
     _formError = e.message;
     const area = document.getElementById('custom-form-area');
@@ -263,8 +273,7 @@ window.badgeAddCustom = async function() {
 window.badgeEarnCustom = async function(dbId) {
   try {
     const res = await post('/badges/custom/' + dbId + '/earn', {});
-    await load();
-    renderPage();
+    await reload();
     window.dispatchEvent(new CustomEvent('badge-earned', {
       detail: [{ icon: res.icon || '🏅', name: res.name || t('badge.customEarnedName'), desc: t('badge.earnedDesc'), rarity: 'custom' }]
     }));
@@ -279,8 +288,7 @@ window.badgeExchange = async function(type, badgeId, points) {
     : '/badges/' + badgeId + '/exchange';
   try {
     await post(path, {});
-    await load();
-    renderPage();
+    await reload();
   } catch (e) {
     alert(e.message);
   }
@@ -289,8 +297,7 @@ window.badgeExchange = async function(type, badgeId, points) {
 window.badgeDeleteCustom = async function(dbId) {
   try {
     await del('/badges/custom/' + dbId);
-    await load();
-    renderPage();
+    await reload();
   } catch (e) {
     alert(e.message);
   }

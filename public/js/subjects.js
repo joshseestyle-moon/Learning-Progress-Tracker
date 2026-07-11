@@ -10,17 +10,23 @@ const PRESET_COLORS = [
   '#0891b2','#059669','#dc2626','#9333ea',
 ];
 
+let _el;
+let _gen = 0;
+
 export async function render(el) {
-  await refresh(el);
+  _el = el;
+  await refresh();
 }
 
-async function refresh(el) {
+async function refresh() {
+  const gen = ++_gen;
   const [subjects, chapters] = await Promise.all([
     get('/subjects'),
     get('/chapters'),
   ]);
-  el.innerHTML = buildPage(subjects, chapters);
-  attachEvents(el, subjects, chapters);
+  if (gen !== _gen) return; // navigated away, or superseded by a newer refresh() call
+  _el.innerHTML = buildPage(subjects, chapters);
+  attachEvents(_el, subjects, chapters);
 }
 
 function buildPage(subjects, chapters) {
@@ -167,7 +173,7 @@ async function saveSubject(el, existing) {
   if (existing) await put('/subjects/' + existing.id, { name, color });
   else          await post('/subjects', { name, color });
   modal.classList.add('hidden');
-  await refresh(el);
+  await refresh();
 }
 
 function attachEvents(el, subjects, chapters) {
@@ -178,7 +184,7 @@ function attachEvents(el, subjects, chapters) {
       e.stopPropagation();
       const s = subjects.find(x => x.id === +btn.dataset.id);
       await put('/subjects/' + s.id, { category: s.category === 'non_exam' ? 'exam' : 'non_exam' });
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -194,7 +200,7 @@ function attachEvents(el, subjects, chapters) {
       e.stopPropagation();
       if (!confirm(t('confirm.deleteSubject'))) return;
       await del('/subjects/' + btn.dataset.id);
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -224,7 +230,7 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
     if (!title || !title.trim()) return;
     const maxOrder = chs.length ? Math.max(...chs.map(c => c.sort_order)) + 1 : 0;
     await post('/chapters', { subject_id: subject.id, title: title.trim(), sort_order: maxOrder });
-    await refresh(el);
+    await refresh();
   };
 
   panel.querySelectorAll('.ch-rename-btn').forEach(btn => {
@@ -232,7 +238,7 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
       const newTitle = prompt(t('prompt.renameChapter'), btn.dataset.title);
       if (!newTitle || !newTitle.trim()) return;
       await put('/chapters/' + btn.dataset.id, { title: newTitle.trim() });
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -240,7 +246,7 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
     btn.onclick = async () => {
       if (!confirm(t('confirm.deleteChapter'))) return;
       await del('/chapters/' + btn.dataset.id);
-      await refresh(el);
+      await refresh();
     };
   });
 
@@ -249,7 +255,7 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
       const idx = +btn.dataset.idx;
       if (idx === 0) return;
       await swapOrder(chs[idx], chs[idx-1]);
-      await refresh(el);
+      await refresh();
     };
   });
   panel.querySelectorAll('.ch-dn-btn').forEach(btn => {
@@ -257,7 +263,7 @@ function showChapterPanel(el, subject, chs, subjects, chapters) {
       const idx = +btn.dataset.idx;
       if (idx >= chs.length - 1) return;
       await swapOrder(chs[idx], chs[idx+1]);
-      await refresh(el);
+      await refresh();
     };
   });
 }
