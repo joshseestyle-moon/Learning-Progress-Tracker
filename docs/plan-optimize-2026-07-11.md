@@ -60,4 +60,40 @@
 同一問題兩種本質不同修法都失敗、或涉及品味取捨（如 mountPeriodScoped 介面設計拿不定）時：把「已知/已試/卡點」整理成三段（≤400 字），用 Agent 工具（model: "fable"）問 advisor，不要第三次重試。
 
 ## 執行紀錄
-（執行者填寫）
+
+執行者：sonnet agent，2026-07-11。分支 `chore-optimize-2026-07-11`。
+
+### Batch 1 — 日期正確性修復
+commit `003f4ed`。`public/js/badges.js:1-19` 改用 `period-filter.js` 匯出的 `localD()`；`routes/assignments.js:13-18` 上界改為 SQL 端 `date('now','localtime','+N days')`。
+- npm test：PASS（65/65）。
+- Playwright（測試用帳號）：badges 頁徽章日期正常顯示（民國115年07月08日等），無 console error。
+
+### Batch 2 — 區間頁面收斂重構＋快取
+commit `8635eb8`。`period-filter.js` 新增 `inRange()` 與 `mountPeriodScoped()`；chapters/exams/homework/studylog 四頁改用高階函式收斂 `_el`/`_scope`/`_gen` 樣板；chapters/exams 首次抓資料後快取（`_cache`），chip 切換走 `applyScope()`（0 fetch，重用快取），CRUD 動作走 `refresh()`（強制重抓）；studylog 拆 `_fixed`（weekly/heatmap/monthly/dashboard-stats 只抓一次）與逐次都抓的 `/studylog`+`/summary`；grades.js 改用 `inRange()`（未收斂進 `mountPeriodScoped`，維持原有 `_el`/`_scope`/`_gen`，符合計畫允許的範圍控制）。
+- npm test：PASS（65/65）。
+- Playwright 實測（network 面板逐一驗證，非目測）：chapters/exams 切 chip 0 個新 fetch（`/api/chapters`、`/api/studylog/by-chapter` 不再重觸發），且過濾正確（114暑假=0筆空狀態、114下學期/全部=27筆）；homework 切 chip 正常重抓 1 個 `/api/daily-tasks`（設計如此，無快取需求）；studylog 切 chip 只新增 2 個 fetch（`/studylog`+`/summary`），新增一筆讀書紀錄後正確觸發全部 6 個端點重抓且資料即時反映，測試資料已刪除清理。
+- 世代守衛：快速連續切 chip 未見畫面錯亂或殘留舊資料。
+
+### Batch 3 — 九個舊模式頁面補世代守衛
+commit `5a89c02`。dashboard/timetable/goals/growth/badges/shop/calendar/report/subjects 皆加上模組級 `_gen`＋`await` 後落 DOM 前的 `gen !== _gen` guard（timetable 的 `reloadSlots`、subjects 的 `refresh` 額外檢查 `tbody`/由 `_el` 導出的容器仍存在）；badges.js 額外把 4 個 mutation handler（新增/兌換/獲得/刪除自訂徽章）收斂進共用的 `reload()`，同樣受 guard 保護；subjects.js 的 `refresh(el)` 改為模組級 `_el`＋無參數 `refresh()`。
+- npm test：PASS（65/65）。
+- 9 個檔案 `node --input-type=module --check` 語法檢查全過。
+- Playwright：9 頁逐一載入無 console error；timetable 切換學期（`reloadSlots` 路徑）、calendar 切換月份（上/下月）、report 產生報告、goals 新增+刪除目標（測試資料已清）、shop 分頁切換（許願池/櫃台）、subjects 點選科目展開章節面板，皆正常運作無錯誤。
+
+### Batch 4 — 低風險清理＋依賴升級
+commit `8e70d33`。`db/db.js` Migration 11 的回填迴圈改用 `db.transaction()` 包裹（比照 M22 慣例）並改 `require('../utils/points')` 取代局部 `RARITY_PTS` 常數；`routes/shop.js:5` 移除未使用的 `RARITY_PTS` 解構；`better-sqlite3` 12.10.0 → 12.11.1。
+- 循環相依風險已核查：`utils/points.js` 頂層 `require('../db/db')`，而 db.js 的 Migration 11 在 `module.exports` 賦值**之前**執行、內部又 `require('../utils/points')`——形成循環 require。已用拋棄式全新 DB（`DB_PATH=/tmp/test-batch4-fresh.db`）跑過整條 migration 鏈驗證：由於這裡只取用 `RARITY_PTS`（模組頂層同步賦值的純物件，不依賴 `db` 是否已完整匯出），循環 require 不影響正確性；`point_log`/`reward_items` 等表格與資料皆正常建立。
+- npm test：PASS（65/65）。
+- **伺服器重啟兩次皆無錯**：第一次重啟（PID 25652）與第二次重啟（PID 10504）皆順利監聽 3000 埠，log 僅有已知的 batch 檔案 `Input redirection is not supported` 提示（非錯誤，既有行為）。
+
+## §3 總驗收
+
+1. `npm test`：**PASS**（65/65，全程跑了 5 次皆綠燈）。
+2. `啟動.bat` 重啟兩次皆無錯：**PASS**（Batch 4 完成後兩次重啟，log 乾淨）。
+3. Playwright（測試用帳號）：**PASS**——15 個路由頁面模組（dashboard/timetable/calendar/exams/homework/chapters/studylog/grades/badges/shop/goals/growth/report/subjects/print）全部載入無 console error；四個區間頁（chapters/exams/homework/studylog）chip 行為逐一以 network 面板驗證正確（見 Batch 2 紀錄）；亮/暗主題各抽 2 頁（dashboard 亮、chapters 暗）截圖確認無壞版。
+4. `git log main..HEAD`：**PASS**——5 個 commit（`eab16f9` 既有 docs commit ＋ 4 個 Batch commit：`003f4ed`/`8635eb8`/`5a89c02`/`8e70d33`），工作樹乾淨。
+5. 本節即驗收結果寫回，隨後一併 commit。
+
+## 未決事項
+- grades.js 未收斂進 `mountPeriodScoped`（計畫允許的範圍控制，維持原有樣板），僅套用 `inRange()`。
+- Batch 4 的循環 require（`db.js` ⇄ `utils/points.js`）目前安全但屬隱性耦合，僅在 Migration 11 首次跑（新 DB）時觸發；若未來 `utils/points.js` 在模組頂層新增依賴 `db` 完整初始化的邏輯，需重新評估此處。未做修改，僅記錄風險。
