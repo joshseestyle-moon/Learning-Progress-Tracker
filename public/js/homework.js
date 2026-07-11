@@ -181,12 +181,15 @@ function attachAddEvent(el) {
     try {
       addBtn.disabled = true;
       const task = await post('/daily-tasks', { title, task_date: date, subject_id, total_parts });
-      titleInput.value = '';
-      partsInput.value = '1';
-      titleInput.focus();
 
       // Re-fetch with the current scope (1 request) so added tasks respect it.
       await refresh();
+
+      // refresh() rebuilds #hw-body (including #hw-title) with fresh, already-blank
+      // inputs — but the new node isn't focused automatically, which breaks rapid
+      // entry. Re-focus it here (guarded: refresh() may have bailed if the user
+      // navigated away in the meantime, in which case #hw-title no longer exists).
+      _el.querySelector('#hw-title')?.focus();
     } catch (e) {
       alert(t('alert.saveFailed', { msg: e.message }));
     } finally {
