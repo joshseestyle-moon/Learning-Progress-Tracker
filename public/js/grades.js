@@ -14,6 +14,7 @@ export async function render(el) {
   _el = el;
   try {
     [subjects, exams] = await Promise.all([get('/subjects'), get('/exams')]);
+    subjects = subjects.filter(s => s.category === 'exam');
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;

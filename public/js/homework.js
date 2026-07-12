@@ -9,7 +9,7 @@ let _mount;
 
 export async function render(el) {
   _el = el;
-  _subjects = await get('/subjects');
+  _subjects = (await get('/subjects')).filter(s => s.category === 'exam');
   await mountPeriodScoped(el, {
     filterId: 'hw-filter', bodyId: 'hw-body',
     onChange: (scope, mount) => { _mount = mount; _scope = scope; refresh(); },

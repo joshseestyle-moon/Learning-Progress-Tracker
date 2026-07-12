@@ -20,7 +20,7 @@ let _cache = null;
 
 export async function render(el) {
   _cache = null;
-  subjects = await get('/subjects');
+  subjects = (await get('/subjects')).filter(s => s.category === 'exam');
   await mountPeriodScoped(el, {
     filterId: 'exam-filter', bodyId: 'exam-body',
     onChange: (scope, mount) => { _mount = mount; _scope = scope; applyScope(); },

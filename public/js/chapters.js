@@ -13,7 +13,7 @@ let _cache = null;
 export async function render(el) {
   _cache = null;
   try {
-    subjects = await get('/subjects');
+    subjects = (await get('/subjects')).filter(s => s.category === 'exam');
   } catch (e) {
     el.innerHTML = `<div class="card"><p style="color:var(--danger)">${t('alert.loadFail', { msg: e.message })}</p></div>`;
     return;
