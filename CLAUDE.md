@@ -1,36 +1,34 @@
 # X:\class — 學習管理系統（給接手的模型）
 
-先讀全域 `C:\Users\Josh\.claude\CLAUDE.md` 的不變量與路由表；本檔只放專案事實。
+先讀全域 `C:\Users\Josh\.claude\CLAUDE.md` 的不變量與路由表；本檔只放專案事實。**現況細節與版本史：`docs\handoff-2026-07-13.md`**（找不到再翻更早的 handoff-*）。
 
 ## 專案不變量（違反即事故）
 1. 伺服器啟動/重啟一律用 `啟動.bat`，不要直接 `node server.js`。
-2. 測試一律用「測試用帳號」；絕不動真實帳號（如 炎朗）。`data\app.db` 是正式資料，孩子的真實學習紀錄在裡面。
-3. 動 migration 前先複製備份 `data\app.db`。migration 寫在 `db\db.js` `openAndMigrate()` 內，必須冪等（`pragma table_info` / `sqlite_master` guard）、編號接續（目前最新編號直接看該函式末尾）。驗證法：重啟伺服器兩次皆無錯。
-4. 新 UI 字串必須同步 `public\js\i18n.js` 內 zh-TW/en/ja 三個字典；完成後 Grep 新 key，命中數必須 = 3。
-5. SQLite 日期查詢一律加 `'localtime'`；點數/XP 類寫入包 better-sqlite3 transaction（仿 `routes\shop.js` 的 `redeemTx`）。
-6. 產品的最終使用者是學生（小孩）：UI 文案以繁中、鼓勵導向為預設；機制設計偏獎勵、不懲罰。
+2. 測試一律用「測試用帳號」（id 7）或「測試用帳號B」（id 8，邦正資料複本）；絕不動真實帳號（邦正/炎朗）。`data\app.db` 是正式資料，孩子的真實學習紀錄在裡面。
+3. 動 migration 前先備份 `data\app.db`（VACUUM INTO，WAL 熱複製不可靠）。migration 在 `db\db.js` `openAndMigrate()`，必須冪等（pragma/sqlite_master guard）、編號接續；驗證法：重啟兩次皆無錯。`db\schema.sql` 每次啟動都會 exec，語句必須 IF NOT EXISTS。
+4. 新 UI 字串同步 `public\js\i18n.js` 三字典（zh-TW/en/ja）；完成後 Grep 新 key 命中數必須 = 3。
+5. SQLite 對 UTC 時間戳欄（created_at/done_at/earned_at）做日期比較一律 `date(col,'localtime')`；純日期欄直接字串比較；前端禁用 `toISOString().slice`（用 api.js 的 today()/ymd() 或 period-filter.js 的 localD()）。點數/XP 寫入包 transaction（仿 routes\shop.js redeemTx）。
+6. 產品最終使用者是學生（小孩）：文案繁中、鼓勵導向；機制偏獎勵、不懲罰。
+7. `require('./db/db')` 有副作用（跑 migration）：任何會 require db 的腳本先設 `DB_PATH=<拋棄式路徑>`；正式備份要在任何 require db 之前完成。
 
 ## 架構速覽
-Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`public\app.html` 殼 + `public\js\*.js`（hash router，一頁一模組，template-literal HTML）。API 在 `routes\*.js`；純邏輯在 `utils\*.js`（node --test，測試在 `test\`，跑 `npm test`）。schema = `db\schema.sql` + `db\db.js` 內嵌 migrations。徽章邏輯在 `badges\checker.js` + `definitions.js`。已知重複點：`RARITY_PTS` 重複定義於 checker.js / badges.js / shop.js / db.js（改任一處要同步，或趁機收斂到 `utils\points.js`）。
+Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`public\app.html` 殼＋`public\js\*.js`（hash router，一頁一模組）。API 在 `routes\`；純邏輯在 `utils\`（測試 `test\`，跑 `npm test`）。徽章在 `badges\`。RARITY_PTS 唯一出處 `utils\points.js`（已收斂，勿再重複定義）。頁面模組新版慣例：世代守衛 `_gen`＋無參數 `refresh()`＋`period-filter.js` 共用元件（範本看 grades.js）。
+**`app\` 是獨立案子**：原生 Android App（完全單機，Kotlin+Compose+Room），規劃在 `app\00-06.md`，程式在 `app\android\`（分支 dev-android-app）。動 web 不碰 app\，動 app 不碰 web。
 
 ## 省 token 提示（本專案實測的坑）
-- `public\js\i18n.js` >1100 行：先 Grep 定位行號，再帶 offset/limit 讀，不要整檔讀。
+- `public\js\i18n.js` >1100 行：先 Grep 定位再帶 offset/limit 讀。
 - `db\db.js`：看 migration 只讀檔案末段。
-- 系統全貌別自己掃：`SYSTEM_DOC.md` / `TECH_SPEC.md` 有現成文件，或派 Explore。
+- 系統全貌別自己掃：`SYSTEM_DOC.md`/`TECH_SPEC.md` 或派 Explore。
+- 遊戲化慣例（XP/point reason 樣式、徽章兌換循環、toast 通道、測試資料清理）：`docs\handoff-2026-07-13.md` §3。**徽章 user_badges 空列 ≠ 漏頒**，那是兌換循環的正常狀態（§3 有查證紀錄）。
 
 ## 進行中的工作
-- 工作分支慣例：每批工作開新分支（近期：dev-2026-07-11、fix-v39-bugs、feat-grades-period-scope），完成驗證後經使用者同意合回 main。勿直接動 main。
-- **v3.9 已完成並驗證**（規劃 `docs\plan-period-scope.md`）：四個明細頁（考試倒數／作業清單／讀書進度／讀書時間）可依學習區間過濾，避免學期交替後舊資料堆積。共用元件 `public\js\period-filter.js`（`initPeriodFilter`/`periodLabel`/`localD`，chips 選擇存 localStorage `periodScope`，預設今日所在區間、否則全部）。Phase A（3502ae5）exams＋homework＋growth 改用共用元件；Phase B（e3a493f）studylog 列表＋學習總覽 scope（`/studylog/summary` 加可選 from/to；近7天圖／熱力圖／月趨勢／streak 維持全量）；Phase C（033e105）chapters 推導式歸屬（`localD(created_at)∈區間` 或任一 review `scheduled_date∈區間`，跨區間複習故意保留；`ch.emptyPeriod` 空狀態）。**無 migration**。homework「全部」語意＝滾動 ±30 天視窗（非字面全部）。
-- **v3.9 後續（2026-07-11 皆已完成合回 main）**：code-review 4 個正確性 bug＋API 缺口已修（世代守衛 `_gen`＋null guard 模式，9f5955c/0fdd522/c7baec0/93f08d0，發現全文在 `docs\handoff-2026-07-11.md` §2，效能類 #6/#7/#8/#9 未做）；`db\schema.sql` 已與 db.js migrations 同步到 M25（d775d99，**注意 db.exec(schema) 每次啟動都執行**，schema.sql 內每條語句必須 IF NOT EXISTS）；**成績紀錄也加入區間過濾**（887fdee，圖表＋表格整頁 scoped，與科目下拉複合）；**新增目標表單依類型顯示完成方式說明**（57f382d，`goal.typeHint.*` ×3）。**產品決策：作業清單與目標不連動**（無作業目標型別，先用文字目標手動勾，日後有需要再議——需 migration 改 goal_type CHECK）。
-- 飛輪升級計畫：`docs\plan-flywheel.md` **五階段全部完成並驗證**（P1/P2：6f8cda3、b3bb93f；P3 XP/combo/驚喜 Mig 22-23：f0d16e9；P4 補救引擎 Mig 24：57b580e；P5 成長頁＋飛輪）。2026-07-10 另完成 code-review 全修（F1-F10，見 docs\review-findings-2026-07-10.md）。分支尚未合回 main，合併前建議使用者實際使用幾天。
-- **v3.8 已完成並驗證**（規劃 `docs\plan-calendar-tasks.md`，Opus 實作）：行事曆的 assignments **正名為「事件」**（純 i18n 值＋2 枚徽章文案，內部識別名/表/路由不動；Phase A e79182d）；**事件完成不再給 XP／驚喜**（Phase A2 9c7bf0f，routes/assignments.js 的 processActivity 呼叫保留供徽章）；**作業清單 daily_tasks 單向顯示到行事曆**（Phase B 681e13f，月曆 📋、日期詳情快速勾選＋前往作業清單，subject 可為 null 有色彩 fallback）。背景：資料調查發現 assignments 被兩個孩子當「事件」用（非作業）。已順手修正邦正 assignment id2 的 2126→2026 年 due_date。
-- **v3.7 已完成並驗證**（規劃 `docs\plan-report.md`，Opus 實作）：Phase A 啟動時每 7 天自動備份到 `data\backups\`（`utils\autoBackup.js`，VACUUM INTO、保留 8 份、失敗不擋啟動）；Phase B 報告 API（`routes\report.js` 的 `/summary`、`/weekly-recap`，純函式 `utils\reportRange.js`、`recapHighlight.js`）；Phase C 學習歷程報告頁（`public\js\report.js`，A4 直式可列印，named `@page reportPage` 與週計畫橫式並存，報告本體恆白底）；Phase D 儀表板週回顧卡（無活動則整卡隱藏）。無 migration。**列印分頁效果建議人工過目一次**（named page 相容性，見 plan-report.md 風險備忘）。
-- 遊戲化系統慣例：XP reason `study:<id>`、`chapter:<progressId>`、`task:<taskId>:<partNum|done>`、`goal:<id>`、`quest:<id>`；重複觸發靠 grantOnce（查 xp_log reason）防重；週統計/區間統計一律排除 `backfill:%`。前端 toast 通道：`gamify-result`（api.js 自動派發）與 `app-toast`（頁面模組手動派發），監聽都在 app.html。測試資料清理：測完刪測試用帳號的 goals/periods/catchup_quests 與 xp_log/daily_reward_log/point_log 測試列；用過 switchLang 要把 users.lang 改回 zh-TW。
+- 分支慣例：每批工作開新分支，完成驗證後**經使用者同意**合回 main；勿直接動 main；commit 逐檔 add。
+- 現況（2026-07-13）：web 到「最佳化輪＋五頁考科過濾」皆已合 main（未 push）；Android App P0-P6 完成於 `dev-android-app` 未合；`chore-copy-script-m25`（copy-user-data 工具）未合。未決清單見 handoff §5。
 
 ## 教訓紀錄
 （格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）
 - [2026-07-08] 情境：用 Bash 工具跑 啟動.bat｜錯誤假設：Git Bash 能處理中文檔名｜修正：中文檔名的 .bat 用 PowerShell 工具跑（`& ".\啟動.bat"`，run_in_background）｜規則已更新：否，單點技巧記在此即可
-- [2026-07-08] 情境：db.js 加 Migration 19 用了 `subCols` 變數名｜錯誤假設：新變數名沒被用過｜修正：openAndMigrate() 是同一個函式作用域，加新 migration 前先 Grep 變數名，慣例用編號後綴（如 subCols19）｜規則已更新：否，此條即紀錄
-- [2026-07-09] 情境：goals 頁炸 `null.newBadges`（使用者回報）｜錯誤假設：所有 API 都回 JSON 物件｜修正：`GET /periods/current` 無命中時回 `res.json(null)`，而 api.js 的回應攔截器直接讀 `data.newBadges`；攔截器已改為先驗 `data && typeof data === 'object'`。新端點若回 null/純值，前端不用改｜規則已更新：否，api.js 集中防護即根治
-- [2026-07-09] 情境：`git add -A` 把 DB 備份（真實資料）commit 進 repo｜錯誤假設：add -A 很方便且 .gitignore 會擋｜修正：本 repo 一律逐檔 `git add <路徑>`，絕不用 `add -A`/`add .`；.gitignore 已加 `*.bak-*`；當下用 amend 移除（未推送前才可）｜規則已更新：是，.gitignore 即規則
-- [2026-07-10] 情境：冒煙測試 `node -e "require('./utils/gamify')"` 讓 db.js 對正式 app.db 跑了 openAndMigrate，新 migration 在備份前就套用｜錯誤假設：require 只是載入模組、不動 DB｜修正：`db/db.js` require 時即執行 `openAndMigrate()`（副作用）。要對程式碼做 require 冒煙測試、或跑任何會 require db 的腳本前，先設 `DB_PATH=<temp>` 指向拋棄式 DB（測試檔已採此法）；動 migration 的正式備份要在任何 require db 之前完成｜規則已更新：否，此條即紀錄
+- [2026-07-08] 情境：db.js 加 Migration 19 用了 `subCols` 變數名｜錯誤假設：新變數名沒被用過｜修正：openAndMigrate() 同一函式作用域，加 migration 前先 Grep 變數名，慣例用編號後綴（subCols19）｜規則已更新：否，此條即紀錄
+- [2026-07-09] 情境：goals 頁炸 `null.newBadges`｜錯誤假設：所有 API 都回 JSON 物件｜修正：api.js 攔截器已改為先驗 `data && typeof data === 'object'`，新端點回 null/純值前端不用改｜規則已更新：否，api.js 集中防護即根治
+- [2026-07-09] 情境：`git add -A` 把 DB 備份（真實資料）commit 進 repo｜錯誤假設：.gitignore 會擋｜修正：本 repo 一律逐檔 `git add <路徑>`，絕不用 add -A/add .；.gitignore 已加 `*.bak-*`｜規則已更新：是，.gitignore 即規則
+- [2026-07-10] 情境：`node -e "require('./utils/gamify')"` 冒煙測試讓 db.js 對正式 app.db 跑了 migration｜錯誤假設：require 只是載入｜修正：已昇華為本檔不變量 7｜規則已更新：是
