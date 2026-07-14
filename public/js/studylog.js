@@ -115,6 +115,7 @@ function buildPage(logs, weekly, summary) {
         </div>
         <button class="btn btn-primary w-full" id="goal-save" style="margin-top:.75rem;">${t('sl.saveGoal')}</button>
         <div id="goal-msg" style="font-size:.8rem;color:var(--success);margin-top:.4rem;min-height:1rem;text-align:center;"></div>
+        <div class="text-xs text-muted" style="margin-top:.5rem;line-height:1.5;">${t('sl.comboHint')}</div>
       </div>
       <div class="card">
         <div class="card-title">${t('sl.summary')}</div>

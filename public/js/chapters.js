@@ -336,6 +336,19 @@ async function save(el, existing) {
   await refresh();
 }
 
+// Toast feedback when the backend auto-scheduled the next review session
+// (A2: 間隔複習排程回饋 — otherwise a review "silently" appears on the calendar).
+function notifyNextReview(res) {
+  if (!res || !res.nextReview || !res.nextReview.scheduled_date) return;
+  window.dispatchEvent(new CustomEvent('app-toast', {
+    detail: {
+      icon: '📅',
+      title: t('ch.reviewScheduled', { date: fmtDate(res.nextReview.scheduled_date) }),
+      color: 'var(--success)',
+    },
+  }));
+}
+
 function attachEvents(el, chapters) {
   el.querySelector('#ch-add-btn').onclick = () => openModal(el, null, null);
 
@@ -347,7 +360,8 @@ function attachEvents(el, chapters) {
   el.querySelectorAll('.ch-toggle-btn').forEach(btn => {
     btn.onclick = async () => {
       const markingDone = btn.dataset.done === '0';
-      await patch('/chapters/' + btn.dataset.id + '/progress', { type: 'preview', toggle_done: true });
+      const res = await patch('/chapters/' + btn.dataset.id + '/progress', { type: 'preview', toggle_done: true });
+      notifyNextReview(res);
       if (markingDone) {
         openTimeModal(el,
           async (minutes) => {
@@ -384,7 +398,8 @@ function attachEvents(el, chapters) {
   el.querySelectorAll('.rev-toggle-btn').forEach(btn => {
     btn.onclick = async () => {
       const markingDone = btn.dataset.done === '0';
-      await patch('/chapters/progress/' + btn.dataset.pid, { toggle_done: true });
+      const res = await patch('/chapters/progress/' + btn.dataset.pid, { toggle_done: true });
+      notifyNextReview(res);
       if (markingDone) {
         openTimeModal(el,
           async (minutes) => {

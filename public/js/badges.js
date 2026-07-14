@@ -289,6 +289,9 @@ window.badgeExchange = async function(type, badgeId, points) {
   try {
     await post(path, {});
     await reload();
+    window.dispatchEvent(new CustomEvent('app-toast', {
+      detail: { icon: '⭐', title: t('badge.exchangeDone', { n: points }), sub: t('badge.exchangeAgain'), color: '#e67e22' },
+    }));
   } catch (e) {
     alert(e.message);
   }

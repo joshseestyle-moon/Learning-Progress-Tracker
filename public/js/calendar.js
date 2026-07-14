@@ -182,6 +182,7 @@ function buildModal(date) {
   return `
     <div class="modal-box">
       <div class="modal-title">${t('modal.addAssignment')}</div>
+      <div class="text-xs text-muted" style="margin:-.3rem 0 .75rem;line-height:1.5;">${t('cal.eventHint')}</div>
       <div class="form-group">
         <label class="form-label">${t('label.subject')}</label>
         <select id="cal-subject" class="form-select">
