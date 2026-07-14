@@ -272,8 +272,15 @@ function openGoalModal(el, existing) {
       body.target_value = +modal.querySelector('#gm-target-gr').value;
     }
     try {
-      if (existing) await put('/goals/' + existing.id, body);
-      else          await post('/goals', body);
+      if (existing) {
+        await put('/goals/' + existing.id, body);
+      } else {
+        const r = await post('/goals', body);
+        if (r && r.needsConfirm) {
+          if (!confirm(t('goal.alreadyMetConfirm'))) return; // 回去修改：保留表單，不建立
+          await post('/goals', { ...body, confirmAlreadyMet: true });
+        }
+      }
     } catch (e) {
       return alert(e.message);
     }

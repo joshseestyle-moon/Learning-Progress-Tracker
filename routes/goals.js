@@ -6,7 +6,7 @@ const { goalWindow, computeProgress } = require('../utils/goalProgress');
 // Metrics inside the goal window. Achievement transitions (is_done + XP) are
 // owned by processActivity (utils/gamify.js); GET only computes, never writes.
 const { metricsFor } = require('../utils/goalMetrics');
-const { processActivity, achieveGoalOnCreate } = require('../utils/gamify');
+const { processActivity, achieveGoalOnCreate, wouldAlreadyBeAchieved } = require('../utils/gamify');
 
 const TYPES = ['chapter', 'grade', 'text'];
 const HORIZONS = ['short', 'mid', 'long'];
@@ -88,6 +88,14 @@ router.post('/', userCtx, (req, res) => {
   const v = validateGoal(req.userId, req.body);
   if (v.error) return res.status(400).json({ error: v.error });
   const g = v.goal;
+  // Chapter/grade goals can already be satisfied by pre-existing progress at
+  // the moment of creation (F1 awards it immediately below). Rather than
+  // silently cashing in old progress, ask the frontend to confirm first —
+  // unless it already did (confirmAlreadyMet), in which case fall through to
+  // the normal create-then-award path.
+  if (!req.body.confirmAlreadyMet && wouldAlreadyBeAchieved(req.userId, g)) {
+    return res.json({ needsConfirm: true });
+  }
   const result = db.prepare(`
     INSERT INTO goals (user_id, title, goal_type, horizon, period_id, subject_id, exam_type, target_value, due_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

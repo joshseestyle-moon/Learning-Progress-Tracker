@@ -212,6 +212,25 @@ function achieveGoalOnCreate(userId, goalId) {
   };
 }
 
+// Pre-check for POST /goals: would a chapter/grade goal with these (validated,
+// not-yet-inserted) fields be satisfied the instant it's created? Mirrors the
+// window/threshold math autoAchieveGoals uses, read-only — no goal row exists
+// yet, so it never touches the DB beyond lookups. Lets the route ask for
+// confirmation instead of silently awarding progress that predates the goal.
+function wouldAlreadyBeAchieved(userId, goal) {
+  if (goal.goal_type !== 'chapter' && goal.goal_type !== 'grade') return false;
+  const period = goal.period_id
+    ? db.prepare('SELECT * FROM periods WHERE id = ? AND user_id = ?').get(goal.period_id, userId)
+    : null;
+  // No real created_at yet (the goal isn't inserted) — synthesize "now" in the
+  // same UTC format the column's DEFAULT would produce. goalWindow only reads
+  // it when there's no linked period.
+  const nowTs = db.prepare("SELECT datetime('now') AS n").get().n;
+  const synthetic = { ...goal, created_at: nowTs };
+  const window = goalWindow(synthetic, period);
+  return computeProgress(synthetic, metricsFor(userId, synthetic, window)).achieved;
+}
+
 // Single source of truth for the active quest: returns it if still inside the
 // deadline, otherwise lazily flips it to 'expired' (no penalty) and returns null.
 function getActiveQuest(userId, todayStr) {
@@ -260,4 +279,4 @@ function getStatus(userId) {
   };
 }
 
-module.exports = { processActivity, achieveGoalOnCreate, getStatus, localToday, questProgress, getActiveQuest };
+module.exports = { processActivity, achieveGoalOnCreate, wouldAlreadyBeAchieved, getStatus, localToday, questProgress, getActiveQuest };
