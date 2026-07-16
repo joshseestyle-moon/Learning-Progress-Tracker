@@ -1,6 +1,6 @@
 # X:\class — 學習管理系統（給接手的模型）
 
-先讀全域 `C:\Users\Josh\.claude\CLAUDE.md` 的不變量與路由表；本檔只放專案事實。**現況細節與版本史：`docs\handoff-2026-07-13.md`**（找不到再翻更早的 handoff-*）。
+先讀全域 `C:\Users\Josh\.claude\CLAUDE.md` 的不變量與路由表；本檔只放專案事實。**現況細節與版本史：`docs\handoff-2026-07-16.md`**（找不到再翻更早的 handoff-*）。
 
 ## 專案不變量（違反即事故）
 1. 伺服器啟動/重啟一律用 `啟動.bat`，不要直接 `node server.js`。
@@ -19,11 +19,11 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 - `public\js\i18n.js` >1100 行：先 Grep 定位再帶 offset/limit 讀。
 - `db\db.js`：看 migration 只讀檔案末段。
 - 系統全貌別自己掃：`SYSTEM_DOC.md`/`TECH_SPEC.md` 或派 Explore。
-- 遊戲化慣例（XP/point reason 樣式、徽章兌換循環、toast 通道、測試資料清理）：`docs\handoff-2026-07-13.md` §3。**徽章 user_badges 空列 ≠ 漏頒**，那是兌換循環的正常狀態（§3 有查證紀錄）。
+- 遊戲化慣例（XP/point reason 樣式、徽章兌換循環、toast 通道、測試資料清理）：`docs\handoff-2026-07-16.md` §3。**徽章 user_badges 空列 ≠ 漏頒**，那是兌換循環的正常狀態（§3 有查證紀錄）。
 
 ## 進行中的工作
 - 分支慣例：每批工作開新分支，完成驗證後**經使用者同意**合回 main；勿直接動 main；commit 逐檔 add。
-- 現況（2026-07-13）：web 到「最佳化輪＋五頁考科過濾」皆已合 main（未 push）；Android App P0-P6 完成於 `dev-android-app` 未合；`chore-copy-script-m25`（copy-user-data 工具）未合。未決清單見 handoff §5。
+- 現況（2026-07-16）：web 到「文案/流程優化＋copy-user-data M25」皆已合 main（領先 origin 1 commit，未 push）；Android App P0-P6 完成於 `dev-android-app` 未合，是目前唯一存在的功能分支。舊分支已全數清理。未決清單見 handoff §5。
 
 ## 教訓紀錄
 （格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）
