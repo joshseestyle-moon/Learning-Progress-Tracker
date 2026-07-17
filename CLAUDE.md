@@ -13,7 +13,7 @@
 
 ## 架構速覽
 Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`public\app.html` 殼＋`public\js\*.js`（hash router，一頁一模組）。API 在 `routes\`；純邏輯在 `utils\`（測試 `test\`，跑 `npm test`）。徽章在 `badges\`。RARITY_PTS 唯一出處 `utils\points.js`（已收斂，勿再重複定義）。頁面模組新版慣例：世代守衛 `_gen`＋無參數 `refresh()`＋`period-filter.js` 共用元件（範本看 grades.js）。
-**`app\` 是獨立案子**：原生 Android App（完全單機，Kotlin+Compose+Room），規劃在 `app\00-06.md`，程式在 `app\android\`（分支 dev-android-app）。動 web 不碰 app\，動 app 不碰 web。
+**Android App 已遷出**（2026-07-17）：原生 App（完全單機，Kotlin+Compose+Room）已拆到獨立**私有** repo `X:\learning-tracker-android`（GitHub private `joshseestyle-moon/learning-tracker-android`），準備上架 Google Play 商業化——**App 相關程式碼與文件絕不放進本公開 repo**。App 的 i18n 由該 repo 的 `tools\extract-i18n.js` 跨 repo 讀本 repo 的 `public\js\i18n.js`（環境變數 `WEB_I18N_PATH`）——改動 web 字典結構（TRANSLATIONS 物件形狀）前要想到這個下游。
 
 ## 省 token 提示（本專案實測的坑）
 - `public\js\i18n.js` >1100 行：先 Grep 定位再帶 offset/limit 讀。
