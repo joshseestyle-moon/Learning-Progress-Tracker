@@ -6,9 +6,10 @@ const { clampText, LIMITS } = require('../utils/validate');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-const partsStmt = db.prepare('SELECT * FROM daily_task_parts WHERE task_id = ? ORDER BY part_num ASC');
+const PARTS_SQL = 'SELECT * FROM daily_task_parts WHERE task_id = ? ORDER BY part_num ASC';
 
 function withParts(tasks) {
+  const partsStmt = db.prepareCached(PARTS_SQL);
   for (const t of tasks) t.parts = partsStmt.all(t.id);
   return tasks;
 }
