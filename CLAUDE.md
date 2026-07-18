@@ -23,7 +23,7 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 
 ## 進行中的工作
 - 分支慣例：每批工作開新分支，完成驗證後**經使用者同意**合回 main；勿直接動 main；commit 逐檔 add。
-- 現況（2026-07-18）：web 到「文案/流程優化＋copy-user-data M25＋goals statement 快取」皆已合 main（領先 origin 1 commit：App 遷出 `ad0d59f`，未 push）；Android App 已遷出至私有 repo（見上），`dev-android-app` 分支已刪除，本 repo 僅剩 `main`。未決清單見 handoff §5。
+- 現況（2026-07-18）：web 到「文案/流程優化＋copy-user-data M25＋goals statement 快取」皆已合 main；Android App 已遷出至私有 repo（見上），`dev-android-app` 分支已刪除，本 repo 僅剩 `main`。**git 歷史已重寫**（`git filter-repo` 自全歷史移除 app/ 文件，App 遷出 commit 現為 `96ee928`）——其他機器的舊 clone 不可 pull，需重新 clone。未決清單見 handoff §5。
 
 ## 教訓紀錄
 （格式見 `C:\Users\Josh\.claude\rules\40-maintenance.md`；新教訓往下加）
