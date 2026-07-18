@@ -32,11 +32,22 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = OFF'); // 暫時關閉，避免複製中途衝突
 
-const srcUser = db.prepare('SELECT * FROM users WHERE name = ?').get(srcName);
-const dstUser = db.prepare('SELECT * FROM users WHERE name = ?').get(dstName);
+const findUsers = db.prepare('SELECT * FROM users WHERE name = ?');
+const srcMatches = findUsers.all(srcName);
+const dstMatches = findUsers.all(dstName);
 
-if (!srcUser) { console.error(`找不到來源帳號：${srcName}`); process.exit(1); }
-if (!dstUser) { console.error(`找不到目標帳號：${dstName}`); process.exit(1); }
+if (!srcMatches.length) { console.error(`找不到來源帳號：${srcName}`); process.exit(1); }
+if (!dstMatches.length) { console.error(`找不到目標帳號：${dstName}`); process.exit(1); }
+if (srcMatches.length > 1) { console.error(`來源名稱「${srcName}」對應 ${srcMatches.length} 個帳號（id=${srcMatches.map(u => u.id).join(', ')}），無法確定是哪一個，拒絕執行。請先清理同名帳號。`); process.exit(1); }
+if (dstMatches.length > 1) { console.error(`目標名稱「${dstName}」對應 ${dstMatches.length} 個帳號（id=${dstMatches.map(u => u.id).join(', ')}），無法確定是哪一個，拒絕執行。請先清理同名帳號。`); process.exit(1); }
+
+const srcUser = srcMatches[0];
+const dstUser = dstMatches[0];
+
+if (srcUser.id === dstUser.id) {
+  console.error(`來源與目標是同一個帳號（id=${srcUser.id}）：清除段會先清空資料，複製階段將讀到空表，等同刪除該帳號全部資料，拒絕執行。`);
+  process.exit(1);
+}
 
 console.log(`來源：${srcUser.name} (id=${srcUser.id})`);
 console.log(`目標：${dstUser.name} (id=${dstUser.id})`);
