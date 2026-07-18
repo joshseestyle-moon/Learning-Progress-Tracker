@@ -284,6 +284,7 @@ db.transaction(() => {
   const insDTP = db.prepare(
     'INSERT INTO daily_task_parts (task_id, part_num, is_done) VALUES (?, ?, ?)'
   );
+  const selDTP = db.prepare('SELECT * FROM daily_task_parts WHERE task_id = ?');
   const taskMap = {}; // old daily_tasks id → new id（parts 不需要 map）
   let dtCount = 0;
   for (const t of srcDT) {
@@ -291,7 +292,7 @@ db.transaction(() => {
     const info = insDT.run(dstId, t.task_date, t.title, t.is_done, newSubjId, t.created_at);
     const newTaskId = info.lastInsertRowid;
     taskMap[t.id] = newTaskId;
-    const parts = db.prepare('SELECT * FROM daily_task_parts WHERE task_id = ?').all(t.id);
+    const parts = selDTP.all(t.id);
     for (const p of parts) insDTP.run(newTaskId, p.part_num, p.is_done);
     dtCount++;
   }
@@ -350,11 +351,12 @@ db.transaction(() => {
   const insQuestItem = db.prepare(
     'INSERT INTO catchup_quest_items (quest_id, kind, item_id) VALUES (?, ?, ?)'
   );
+  const selQuestItems = db.prepare('SELECT * FROM catchup_quest_items WHERE quest_id = ?');
   let qiCount = 0;
   let qiSkipped = 0;
   for (const q of srcQuests) {
     const newQuestId = questMap[q.id];
-    const items = db.prepare('SELECT * FROM catchup_quest_items WHERE quest_id = ?').all(q.id);
+    const items = selQuestItems.all(q.id);
     for (const item of items) {
       let newItemId = null;
       if (item.kind === 'chapter') newItemId = cpMap[item.item_id];
@@ -371,34 +373,29 @@ db.transaction(() => {
   console.log(`  補救任務項目：${qiCount} 筆（跳過 ${qiSkipped} 筆對映不到的）`);
 
   // ── 21. 複製 xp_log，reason 內嵌 id 依 map 改寫 ────────────────────────
+  // 樣式對照表：須與 utils/gamify.js 寫入 xp_log 的字面樣板一致；
+  // gamify 新增 reason 樣式時在此加一筆（regex 第 1 組 = 要改寫的來源 id）。
+  const REASON_RULES = [
+    { re: /^study:(\d+)$/,     map: slMap,    make: (id) => `study:${id}` },
+    { re: /^chapter:(\d+)$/,   map: cpMap,    make: (id) => `chapter:${id}` },
+    { re: /^task:(\d+):(.+)$/, map: taskMap,  make: (id, m) => `task:${id}:${m[2]}` },
+    { re: /^goal:(\d+)$/,      map: goalMap,  make: (id) => `goal:${id}` },
+    { re: /^quest:(\d+)$/,     map: questMap, make: (id) => `quest:${id}` },
+  ];
+  const unknownStyles = new Set();
   function rewriteReason(reason) {
-    let m;
-    if ((m = /^study:(\d+)$/.exec(reason))) {
-      const newId = slMap[m[1]];
-      if (newId) return { reason: `study:${newId}`, unmapped: false };
+    for (const rule of REASON_RULES) {
+      const m = rule.re.exec(reason);
+      if (!m) continue;
+      const newId = rule.map[m[1]];
+      if (newId) return { reason: rule.make(newId, m), unmapped: false };
       return { reason, unmapped: true };
     }
-    if ((m = /^chapter:(\d+)$/.exec(reason))) {
-      const newId = cpMap[m[1]];
-      if (newId) return { reason: `chapter:${newId}`, unmapped: false };
-      return { reason, unmapped: true };
+    // backfill:% 原樣保留；其餘「疑似內嵌 id」但不在對照表的樣式要記下來警告——
+    // 靜默保留會讓複本的 reason 指向來源帳號的 id，grantOnce 防重語意在複本上失真
+    if (!reason.startsWith('backfill:') && /^\w+:\d+(?::|$)/.test(reason)) {
+      unknownStyles.add(reason.replace(/\d+/g, '<id>'));
     }
-    if ((m = /^task:(\d+):(.+)$/.exec(reason))) {
-      const newId = taskMap[m[1]];
-      if (newId) return { reason: `task:${newId}:${m[2]}`, unmapped: false };
-      return { reason, unmapped: true };
-    }
-    if ((m = /^goal:(\d+)$/.exec(reason))) {
-      const newId = goalMap[m[1]];
-      if (newId) return { reason: `goal:${newId}`, unmapped: false };
-      return { reason, unmapped: true };
-    }
-    if ((m = /^quest:(\d+)$/.exec(reason))) {
-      const newId = questMap[m[1]];
-      if (newId) return { reason: `quest:${newId}`, unmapped: false };
-      return { reason, unmapped: true };
-    }
-    // backfill:% 及其他不符合上述樣式者，原樣保留，不計入 unmapped
     return { reason, unmapped: false };
   }
 
@@ -413,6 +410,9 @@ db.transaction(() => {
     insXP.run(dstId, x.delta, reason, x.created_at);
   }
   console.log(`  XP 紀錄：${srcXP.length} 筆（reason 樣式符合但對映不到、原樣保留：${xpUnmapped} 筆）`);
+  for (const s of unknownStyles) {
+    console.warn(`  警告：reason 樣式「${s}」不在 REASON_RULES 對照表，內嵌 id 未改寫——若是 gamify.js 新增的樣式，請同步更新本表`);
+  }
 
   // ── 22. 複製 daily_reward_log ──────────────────────────────────────────
   const srcDRL = db.prepare('SELECT * FROM daily_reward_log WHERE user_id = ?').all(srcId);

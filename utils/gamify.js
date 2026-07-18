@@ -220,12 +220,12 @@ function achieveGoalOnCreate(userId, goalId) {
 function wouldAlreadyBeAchieved(userId, goal) {
   if (goal.goal_type !== 'chapter' && goal.goal_type !== 'grade') return false;
   const period = goal.period_id
-    ? db.prepare('SELECT * FROM periods WHERE id = ? AND user_id = ?').get(goal.period_id, userId)
+    ? db.prepareCached('SELECT * FROM periods WHERE id = ? AND user_id = ?').get(goal.period_id, userId)
     : null;
   // No real created_at yet (the goal isn't inserted) — synthesize "now" in the
-  // same UTC format the column's DEFAULT would produce. goalWindow only reads
-  // it when there's no linked period.
-  const nowTs = db.prepare("SELECT datetime('now') AS n").get().n;
+  // same UTC format the column's DEFAULT (datetime('now')) would produce.
+  // goalWindow only reads it when there's no linked period.
+  const nowTs = new Date().toISOString().replace('T', ' ').slice(0, 19);
   const synthetic = { ...goal, created_at: nowTs };
   const window = goalWindow(synthetic, period);
   return computeProgress(synthetic, metricsFor(userId, synthetic, window)).achieved;
