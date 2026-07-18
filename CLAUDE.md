@@ -32,3 +32,4 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 - [2026-07-09] 情境：goals 頁炸 `null.newBadges`｜錯誤假設：所有 API 都回 JSON 物件｜修正：api.js 攔截器已改為先驗 `data && typeof data === 'object'`，新端點回 null/純值前端不用改｜規則已更新：否，api.js 集中防護即根治
 - [2026-07-09] 情境：`git add -A` 把 DB 備份（真實資料）commit 進 repo｜錯誤假設：.gitignore 會擋｜修正：本 repo 一律逐檔 `git add <路徑>`，絕不用 add -A/add .；.gitignore 已加 `*.bak-*`｜規則已更新：是，.gitignore 即規則
 - [2026-07-10] 情境：`node -e "require('./utils/gamify')"` 冒煙測試讓 db.js 對正式 app.db 跑了 migration｜錯誤假設：require 只是載入｜修正：已昇華為本檔不變量 7｜規則已更新：是
+- [2026-07-18] 情境：perf commit 把 goalMetrics 的 statement 提到模組頂層快取，撞上 `db.reinitialize()` 備份匯入 hot-swap（statement 綁死已關閉的舊連線 → goals 全面 500）｜錯誤假設：db 連線終生不換｜修正：statement 快取一律走 db.js 的 `prepareCached(sql)`（reinitialize 時自動失效重建），絕不在模組層存 statement 物件｜規則已更新：是，db.js wrapper 註解＋此條

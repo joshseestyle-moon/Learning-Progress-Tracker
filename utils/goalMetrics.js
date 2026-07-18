@@ -3,7 +3,9 @@
 // The pure window/threshold math lives in utils/goalProgress.js.
 const db = require('../db/db');
 
-const chapterDoneStmt = db.prepare(`
+// SQL kept as constants; statements are fetched via db.prepareCached() on
+// every call so they survive db.reinitialize() connection hot-swaps.
+const CHAPTER_DONE_SQL = `
   SELECT COUNT(*) AS n
   FROM chapter_progress cp
   JOIN chapters c ON c.id = cp.chapter_id
@@ -11,11 +13,11 @@ const chapterDoneStmt = db.prepare(`
     AND (? IS NULL OR date(cp.done_at,'localtime') >= date(?))
     AND (? IS NULL OR date(cp.done_at,'localtime') <= date(?))
     AND (? IS NULL OR c.subject_id = ?)
-`);
+`;
 
 // exam_type lives on exams; manually-entered grades (exam_id NULL) can only
 // match when the goal doesn't restrict exam_type.
-const bestGradeStmt = db.prepare(`
+const BEST_GRADE_SQL = `
   SELECT MAX(g.score) AS s
   FROM grades g
   LEFT JOIN exams e ON e.id = g.exam_id
@@ -23,15 +25,15 @@ const bestGradeStmt = db.prepare(`
     AND (? IS NULL OR e.exam_type = ?)
     AND (? IS NULL OR date(g.exam_date) >= date(?))
     AND (? IS NULL OR date(g.exam_date) <= date(?))
-`);
+`;
 
 function metricsFor(userId, goal, window) {
   if (goal.goal_type === 'chapter') {
-    const row = chapterDoneStmt.get(userId, window.from, window.from, window.to, window.to, goal.subject_id, goal.subject_id);
+    const row = db.prepareCached(CHAPTER_DONE_SQL).get(userId, window.from, window.from, window.to, window.to, goal.subject_id, goal.subject_id);
     return { chapterDoneCount: row.n };
   }
   if (goal.goal_type === 'grade') {
-    const row = bestGradeStmt.get(userId, goal.subject_id,
+    const row = db.prepareCached(BEST_GRADE_SQL).get(userId, goal.subject_id,
       goal.exam_type, goal.exam_type,
       window.from, window.from, window.to, window.to);
     return { bestScore: row.s };
