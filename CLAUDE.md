@@ -26,7 +26,7 @@ Express 5 + better-sqlite3（WAL），入口 `server.js`。無框架 SPA：`publ
 - 現況（2026-07-18）：web 到「文案/流程優化＋copy-user-data M25＋goals statement 快取」皆已合 main；Android App 已遷出至私有 repo（見上），`dev-android-app` 分支已刪除，本 repo 僅剩 `main`。**git 歷史已重寫**（`git filter-repo` 自全歷史移除 app/ 文件，App 遷出 commit 現為 `96ee928`）——其他機器的舊 clone 不可 pull，需重新 clone。未決清單見 handoff §5。
 
 ## 教訓紀錄
-（格式見 `C:\Users\Josh\.claude\guides\40-maintenance.md`；新教訓往下加）
+（格式見 institution-maintenance skill；新教訓往下加）
 - [2026-07-08] 情境：用 Bash 工具跑 啟動.bat｜錯誤假設：Git Bash 能處理中文檔名｜修正：中文檔名的 .bat 用 PowerShell 工具跑（`& ".\啟動.bat"`，run_in_background）｜規則已更新：否，單點技巧記在此即可
 - [2026-07-08] 情境：db.js 加 Migration 19 用了 `subCols` 變數名｜錯誤假設：新變數名沒被用過｜修正：openAndMigrate() 同一函式作用域，加 migration 前先 Grep 變數名，慣例用編號後綴（subCols19）｜規則已更新：否，此條即紀錄
 - [2026-07-09] 情境：goals 頁炸 `null.newBadges`｜錯誤假設：所有 API 都回 JSON 物件｜修正：api.js 攔截器已改為先驗 `data && typeof data === 'object'`，新端點回 null/純值前端不用改｜規則已更新：否，api.js 集中防護即根治
